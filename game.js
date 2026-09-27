@@ -77,6 +77,8 @@
     return [keeper(first),keeper(second)];
   }
 
+  const SPRITE_KEYS={'대한민국':'korea'};
+
   const countries = [
     ['🇦🇷','아르헨티나','#62b4ff'],['🇧🇷','브라질','#f5cf35'],['🇫🇷','프랑스','#2261d6'],['🇩🇪','독일','#e4b441'],
     ['🇪🇸','스페인','#df3434'],['🇵🇹','포르투갈','#16874b'],['🇰🇷','대한민국','#ffffff'],['🇯🇵','일본','#e9424d'],
@@ -94,7 +96,8 @@
     const profile=TEAM_PROFILES[name];
     return {
       id,flag,name,color,
-      rating:profile.rating,kit:profile.kit,awayKit:awayKitFor(profile.kit)
+      rating:profile.rating,kit:profile.kit,awayKit:awayKitFor(profile.kit),
+      spriteKey:SPRITE_KEYS[name]||null
     };
   });
 
@@ -123,18 +126,23 @@
     const image=new Image();image.src=`assets/players/${file}`;return image;
   };
   fetch('assets/players/manifest.json').then(response=>response.json()).then(manifest=>{
-    for(const state of ['idle','run','kick','shot']){
-      const mapping=manifest.korea?.[state]||{};
-      playerSprites[state]={
-        field:(Array.isArray(mapping.field)?mapping.field:[]).map(loadPlayerSprite).filter(Boolean),
-        goalkeeper:loadPlayerSprite(mapping.goalkeeper)
-      };
+    for(const [teamKey,teamManifest] of Object.entries(manifest||{})){
+      const states={};
+      for(const state of ['idle','run','kick','shot']){
+        const mapping=teamManifest?.[state]||{};
+        states[state]={
+          field:(Array.isArray(mapping.field)?mapping.field:[]).map(loadPlayerSprite).filter(Boolean),
+          goalkeeper:loadPlayerSprite(mapping.goalkeeper)
+        };
+      }
+      playerSprites[teamKey]=states;
     }
   }).catch(()=>{});
 
-  function koreaSprite(p,state) {
-    if(!game||p.side!==0||game.home?.name!=='대한민국')return null;
-    const mapping=playerSprites[state];
+  function teamSprite(p,state) {
+    const key=p.team?.spriteKey;
+    if(!key)return null;
+    const mapping=playerSprites[key]?.[state];
     const image=p.role==='GK'?mapping?.goalkeeper:mapping?.field?.[p.index%3];
     return image?.complete&&image.naturalWidth>0?image:null;
   }
@@ -538,7 +546,7 @@
     ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
 
     const state=game&&p.shotUntil>game.elapsed?'shot':game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
-    const image=koreaSprite(p,state);
+    const image=teamSprite(p,state);
     const hasSprite=Boolean(image);
     if(hasSprite){
       const width=radius*2.65,height=radius*2.9,bottom=pt.y+radius*1.65;
