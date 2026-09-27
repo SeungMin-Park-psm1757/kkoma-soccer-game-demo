@@ -548,9 +548,12 @@
     const state=game&&p.shotUntil>game.elapsed?'shot':game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
     const image=teamSprite(p,state);
     const hasSprite=Boolean(image);
+    let spriteTop=null;
     if(hasSprite){
-      const width=radius*2.65,height=radius*2.9,bottom=pt.y+radius*1.65;
-      ctx.drawImage(image,pt.x-width/2,bottom-height*134/136,width,height);
+      const width=radius*2.9,height=radius*3.15,bottom=pt.y+radius*1.65;
+      const top=bottom-height*134/136;
+      spriteTop=bottom-height*132/136;
+      ctx.drawImage(image,pt.x-width/2,top,width,height);
     }
 
     if(!hasSprite){
@@ -581,8 +584,15 @@
       }
     }
 
-    if(game&&p===game.ball.owner){ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();ctx.arc(pt.x,pt.y,radius+4,0,Math.PI*2);ctx.stroke();}
-    if(game&&p.side===0&&p.index===game.controlled){ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(pt.x,pt.y-radius-5);ctx.lineTo(pt.x-4,pt.y-radius-11);ctx.lineTo(pt.x+4,pt.y-radius-11);ctx.fill();}
+    if(game&&p===game.ball.owner){
+      ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();
+      ctx.arc(pt.x,pt.y,hasSprite?radius*1.55:radius+4,0,Math.PI*2);ctx.stroke();
+    }
+    if(game&&p.side===0&&p.index===game.controlled){
+      const markerY=hasSprite&&Number.isFinite(spriteTop)?spriteTop-2:pt.y-radius-5;
+      ctx.fillStyle='#ffffff';ctx.beginPath();
+      ctx.moveTo(pt.x,markerY);ctx.lineTo(pt.x-4,markerY-6);ctx.lineTo(pt.x+4,markerY-6);ctx.fill();
+    }
   }
 
   function drawBall() {
