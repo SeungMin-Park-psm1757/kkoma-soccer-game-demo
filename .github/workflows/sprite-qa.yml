@@ -1,0 +1,36 @@
+name: Sprite QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/players/**'
+      - 'tests/sprite-qa.py'
+      - '.github/workflows/sprite-qa.yml'
+  pull_request:
+    paths:
+      - 'assets/players/**'
+      - 'tests/sprite-qa.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Inspect sprites
+        run: python tests/sprite-qa.py
+      - name: Upload sprite QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: korea-sprite-qa
+          path: sprite-qa/
