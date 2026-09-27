@@ -18,7 +18,7 @@ GitHub Pages에서 실행되는 정적 모바일 축구 시제품입니다.
 ## 자산과 검증
 
 - 그림 위치와 공통 선수 프레임 규격: [`assets/README.md`](assets/README.md)
-- 새 그림이 없어도 캔버스 선수가 표시됩니다. 현재 외부 이미지와 음악 파일은 사용하지 않습니다.
+- 대한민국은 production idle/run WebP 스프라이트를 사용하며, 미지원 상태·로딩 실패·다른 국가는 Canvas 선수로 자동 fallback합니다. manifest 로더는 국가 키 기반이라 이후 국가 자산을 같은 구조로 확장할 수 있습니다. 현재 외부 음악 파일은 사용하지 않습니다.
 - 로직 검증: `node tests/mobile-logic.mjs`
 - 문법 확인: `node --check game.js`
 
