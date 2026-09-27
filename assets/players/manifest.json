@@ -1,14 +1,36 @@
 {
   "korea": {
     "idle": {
-      "field": ["korea/idle-1.webp", "korea/idle-2.webp", "korea/idle-3.webp"],
+      "field": [
+        "korea/idle-1.webp",
+        "korea/idle-2.webp",
+        "korea/idle-3.webp"
+      ],
       "goalkeeper": "korea/idle-gk.webp"
     },
     "run": {
-      "field": ["korea/run-1.webp", "korea/run-2.webp", "korea/run-3.webp"],
+      "field": [
+        "korea/run-1.webp",
+        "korea/run-2.webp",
+        "korea/run-3.webp"
+      ],
       "goalkeeper": "korea/run-gk.webp"
     },
-    "kick": { "field": [], "goalkeeper": null },
-    "shot": { "field": [], "goalkeeper": null }
+    "kick": {
+      "field": [
+        "korea/pass-1.webp",
+        "korea/pass-2.webp",
+        "korea/pass-3.webp"
+      ],
+      "goalkeeper": null
+    },
+    "shot": {
+      "field": [
+        "korea/shot-1.webp",
+        "korea/shot-2.webp",
+        "korea/shot-3.webp"
+      ],
+      "goalkeeper": null
+    }
   }
 }
