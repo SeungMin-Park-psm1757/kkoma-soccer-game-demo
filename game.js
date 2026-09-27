@@ -117,37 +117,26 @@
     set(key,value) { try { localStorage.setItem(key,JSON.stringify(value)); } catch {} }
   };
 
-  const playerSprites={idle:[],run:[],kick:[]};
+  const playerSprites={};
+  const loadPlayerSprite=file=>{
+    if(typeof file!=='string'||file.includes('..'))return null;
+    const image=new Image();image.src=`assets/players/${file}`;return image;
+  };
   fetch('assets/players/manifest.json').then(response=>response.json()).then(manifest=>{
-    for(const state of Object.keys(playerSprites)){
-      for(const file of manifest[state]||[]){
-        const image=new Image();image.src=`assets/players/${file}`;playerSprites[state].push(image);
-      }
+    for(const state of ['idle','run','kick','shot']){
+      const mapping=manifest.korea?.[state]||{};
+      playerSprites[state]={
+        field:(Array.isArray(mapping.field)?mapping.field:[]).map(loadPlayerSprite).filter(Boolean),
+        goalkeeper:loadPlayerSprite(mapping.goalkeeper)
+      };
     }
   }).catch(()=>{});
 
-  // Production-art bridge: use the approved Korea 4x4 concept sheet directly for
-  // safe states (idle/run) until Codex exports ball-free per-frame sprites.
-  const koreaCharacterSheet=new Image();
-  koreaCharacterSheet.src='assets/players/character-sheet-korea-v2.png';
-
-  function koreaSheetCell(p,state) {
+  function koreaSprite(p,state) {
     if(!game||p.side!==0||game.home?.name!=='대한민국')return null;
-    if(state!=='idle'&&state!=='run')return null;
-    if(!koreaCharacterSheet.complete||!koreaCharacterSheet.naturalWidth)return null;
-    const col=p.role==='GK'?3:p.index%3;
-    const row=state==='run'?1:0;
-    return {col,row};
-  }
-
-  function drawKoreaSheetPlayer(p,pt,radius,state) {
-    const cell=koreaSheetCell(p,state);
-    if(!cell)return false;
-    const sw=koreaCharacterSheet.naturalWidth/4,sh=koreaCharacterSheet.naturalHeight/4;
-    const sx=cell.col*sw,sy=cell.row*sh;
-    const dw=radius*3.15,dh=radius*3.35;
-    ctx.drawImage(koreaCharacterSheet,sx,sy,sw,sh,pt.x-dw/2,pt.y-radius*1.45,dw,dh);
-    return true;
+    const mapping=playerSprites[state];
+    const image=p.role==='GK'?mapping?.goalkeeper:mapping?.field?.[p.index%3];
+    return image?.complete&&image.naturalWidth>0?image:null;
   }
 
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
@@ -549,14 +538,14 @@
     ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
 
     const state=game&&p.shotUntil>game.elapsed?'shot':game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
-    const usedKoreaSheet=drawKoreaSheetPlayer(p,pt,radius,state);
+    const image=koreaSprite(p,state);
+    const hasSprite=Boolean(image);
+    if(hasSprite){
+      const width=radius*2.65,height=radius*2.9,bottom=pt.y+radius*1.65;
+      ctx.drawImage(image,pt.x-width/2,bottom-height*134/136,width,height);
+    }
 
-    const frames=playerSprites[state]||playerSprites[state==='shot'?'kick':state]||[];
-    const image=!usedKoreaSheet&&frames.length?frames[Math.floor((game?.elapsed||0)*8)%frames.length]:null;
-    const hasSprite=image?.complete&&image.naturalWidth>0;
-    if(hasSprite)ctx.drawImage(image,pt.x-radius*1.6,pt.y-radius*1.42,radius*3.2,radius*3.4);
-
-    if(!usedKoreaSheet){
+    if(!hasSprite){
       // shirt
       ctx.fillStyle=shirt;ctx.strokeStyle=kit.trim||'#fff';ctx.lineWidth=1.2*pt.scale;
       ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*.92,radius*.42);ctx.fill();ctx.stroke();
