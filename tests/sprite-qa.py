@@ -1,5 +1,5 @@
 from pathlib import Path
-from PIL import Image, ImageOps, ImageDraw
+from PIL import Image, ImageDraw
 import json
 
 root = Path("assets/players/korea")
@@ -12,12 +12,19 @@ thumbs = []
 for path in files:
     with Image.open(path) as im:
         rgba = im.convert("RGBA")
+        if rgba.size != (128, 136):
+            raise SystemExit(f"FAIL: {path.name} canvas is {rgba.size}, expected 128x136")
         alpha = rgba.getchannel("A")
         bbox = alpha.getbbox()
         if not bbox:
-            raise SystemExit(f"{path}: empty alpha")
+            raise SystemExit(f"FAIL: {path.name} has empty alpha")
+        if any(alpha.getpixel(point) != 0 for point in [(0,0),(127,0),(0,135),(127,135)]):
+            raise SystemExit(f"FAIL: {path.name} corner alpha is not transparent")
+        transparent = sum(1 for value in alpha.getdata() if value == 0)
+        if transparent < 128*136*.20:
+            raise SystemExit(f"FAIL: {path.name} has too little transparent area; possible baked background")
         left, top, right, bottom = bbox
-        metrics.append({
+        metric = {
             "file": str(path),
             "canvas": [rgba.width, rgba.height],
             "alpha_bbox": [left, top, right, bottom],
@@ -26,7 +33,9 @@ for path in files:
             "left_margin": left,
             "right_margin": rgba.width-right,
             "top_margin": top,
-        })
+            "transparent_ratio": round(transparent/(128*136), 4),
+        }
+        metrics.append(metric)
 
         tile = Image.new("RGBA", (160, 184), (30, 45, 42, 255))
         checker = Image.new("RGBA", (128, 136), (0,0,0,0))
@@ -53,13 +62,25 @@ for i,tile in enumerate(thumbs):
     sheet.paste(tile,((i%cols)*160,(i//cols)*184))
 sheet.save(out/"korea-sprite-contact.png")
 
-bottoms=[m["bottom_margin"] for m in metrics]
-heights=[m["content_size"][1] for m in metrics]
+for state in ("idle","run"):
+    group=[m for m in metrics if Path(m["file"]).name.startswith(state+"-")]
+    bottoms=[m["bottom_margin"] for m in group]
+    heights=[m["content_size"][1] for m in group]
+    if max(bottoms)-min(bottoms) > 3:
+        raise SystemExit(f"FAIL: {state} foot baselines differ by more than 3 px")
+    if max(heights)-min(heights) > 18:
+        raise SystemExit(f"FAIL: {state} visible heights differ by more than 18 px")
+
+for state in ("pass","shot"):
+    group=[m for m in metrics if Path(m["file"]).name.startswith(state+"-")]
+    if len(group) != 3:
+        raise SystemExit(f"FAIL: expected 3 {state} field sprites, found {len(group)}")
+    for m in group:
+        height=m["content_size"][1]
+        if height < 112 or height > 134:
+            raise SystemExit(f"FAIL: {m['file']} visible height {height} outside action tolerance")
+        if m["bottom_margin"] > 14:
+            raise SystemExit(f"FAIL: {m['file']} bottom margin too large")
+
 print(json.dumps(metrics, ensure_ascii=False, indent=2))
-print(f"bottom-margin range: {min(bottoms)}..{max(bottoms)} px")
-print(f"content-height range: {min(heights)}..{max(heights)} px")
-if max(bottoms)-min(bottoms) > 3:
-    raise SystemExit("FAIL: sprite foot baselines differ by more than 3 px")
-if max(heights)-min(heights) > 18:
-    raise SystemExit("FAIL: sprite visible heights differ by more than 18 px")
-print("PASS: sprite alpha bounds and baselines are within tolerance")
+print("PASS: sprite dimensions, transparency, baseline rules, and action-frame tolerances")
