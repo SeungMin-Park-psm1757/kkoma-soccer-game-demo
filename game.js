@@ -1,22 +1,81 @@
 (() => {
   'use strict';
 
+  const FAST={speed:1.04,pass:.98,shot:.98}, PASS={speed:.98,pass:1.04,shot:.98};
+  const SHOT={speed:.98,pass:.98,shot:1.04}, BALANCED={speed:1,pass:1,shot:1};
   const TEAM_PROFILES = {
-    '아르헨티나': {rating:{speed:1.01,pass:1.06,shot:1.06},kit:{primary:'#8ecdf4',secondary:'#ffffff',shorts:'#111111',socks:'#ffffff',trim:'#ffffff',gkPrimary:'#52c46b'}},
-    '브라질': {rating:{speed:1.06,pass:1.03,shot:1.05},kit:{primary:'#f7d927',secondary:'#1e8f4d',shorts:'#2457a6',socks:'#ffffff',trim:'#1e8f4d',gkPrimary:'#5b5b5b'}},
-    '프랑스': {rating:{speed:1.04,pass:1.03,shot:1.05},kit:{primary:'#244ea8',secondary:'#ffffff',shorts:'#183a7b',socks:'#d93a47',trim:'#ffffff',gkPrimary:'#f0a536'}},
-    '독일': {rating:{speed:.99,pass:1.05,shot:1.03},kit:{primary:'#f4f4f4',secondary:'#171717',shorts:'#171717',socks:'#f4f4f4',trim:'#d7b445',gkPrimary:'#49a061'}},
-    '스페인': {rating:{speed:.99,pass:1.06,shot:1.03},kit:{primary:'#c92d35',secondary:'#f0c83f',shorts:'#243a74',socks:'#c92d35',trim:'#f0c83f',gkPrimary:'#72a94c'}},
-    '포르투갈': {rating:{speed:1.03,pass:1.02,shot:1.06},kit:{primary:'#b61f33',secondary:'#236c43',shorts:'#2f6245',socks:'#b61f33',trim:'#e6c84c',gkPrimary:'#d7d7d7'}},
+    '아르헨티나': {rating:{speed:1,pass:1.02,shot:1.04},kit:{primary:'#8ecdf4',secondary:'#ffffff',shorts:'#111111',socks:'#ffffff',trim:'#ffffff',gkPrimary:'#52c46b'}},
+    '브라질': {rating:{speed:1.04,pass:1,shot:1.02},kit:{primary:'#f7d927',secondary:'#1e8f4d',shorts:'#2457a6',socks:'#ffffff',trim:'#1e8f4d',gkPrimary:'#5b5b5b'}},
+    '프랑스': {rating:{speed:1.03,pass:.99,shot:1.03},kit:{primary:'#244ea8',secondary:'#ffffff',shorts:'#183a7b',socks:'#d93a47',trim:'#ffffff',gkPrimary:'#f0a536'}},
+    '독일': {rating:{speed:.98,pass:1.04,shot:.99},kit:{primary:'#f4f4f4',secondary:'#171717',shorts:'#171717',socks:'#f4f4f4',trim:'#d7b445',gkPrimary:'#49a061'}},
+    '스페인': {rating:{speed:.98,pass:1.05,shot:.97},kit:{primary:'#c92d35',secondary:'#f0c83f',shorts:'#243a74',socks:'#c92d35',trim:'#f0c83f',gkPrimary:'#72a94c'}},
+    '포르투갈': {rating:{speed:1.01,pass:.98,shot:1.05},kit:{primary:'#b61f33',secondary:'#236c43',shorts:'#2f6245',socks:'#b61f33',trim:'#e6c84c',gkPrimary:'#d7d7d7'}},
     '대한민국': {rating:{speed:1.03,pass:1.01,shot:1.00},kit:{primary:'#e7263f',secondary:'#111111',shorts:'#e7263f',socks:'#e7263f',trim:'#ffffff',gkPrimary:'#f2c534'}},
     '일본': {rating:{speed:1.02,pass:1.03,shot:.99},kit:{primary:'#2450a4',secondary:'#ffffff',shorts:'#173a7c',socks:'#2450a4',trim:'#ffffff',gkPrimary:'#f2c534'}},
-    '잉글랜드': {rating:{speed:1.00,pass:1.02,shot:1.04},kit:{primary:'#f5f5f5',secondary:'#233b70',shorts:'#233b70',socks:'#f5f5f5',trim:'#d94752',gkPrimary:'#5a8f5a'}},
-    '크로아티아': {rating:{speed:.99,pass:1.04,shot:1.02},kit:{primary:'#f5f5f5',secondary:'#d8464b',shorts:'#28519a',socks:'#ffffff',trim:'#d8464b',gkPrimary:'#5a8f5a'}},
-    '네덜란드': {rating:{speed:1.02,pass:1.02,shot:1.03},kit:{primary:'#ef7a26',secondary:'#111111',shorts:'#ef7a26',socks:'#ef7a26',trim:'#111111',gkPrimary:'#58a764'}},
-    '우루과이': {rating:{speed:1.00,pass:1.03,shot:1.03},kit:{primary:'#79c5ed',secondary:'#111111',shorts:'#111111',socks:'#79c5ed',trim:'#ffffff',gkPrimary:'#e8c640'}},
-    '벨기에': {rating:{speed:1.02,pass:1.02,shot:1.03},kit:{primary:'#d73c43',secondary:'#111111',shorts:'#111111',socks:'#d73c43',trim:'#e8c43b',gkPrimary:'#5a8f5a'}},
-    '이탈리아': {rating:{speed:1.00,pass:1.04,shot:1.01},kit:{primary:'#2f69bd',secondary:'#ffffff',shorts:'#ffffff',socks:'#2f69bd',trim:'#ffffff',gkPrimary:'#5a8f5a'}}
+    '잉글랜드': {rating:{speed:.99,pass:1,shot:1.03},kit:{primary:'#f5f5f5',secondary:'#233b70',shorts:'#233b70',socks:'#f5f5f5',trim:'#d94752',gkPrimary:'#5a8f5a'}},
+    '크로아티아': {rating:PASS,kit:{primary:'#f5f5f5',secondary:'#d8464b',shorts:'#28519a',socks:'#ffffff',trim:'#d8464b',gkPrimary:'#5a8f5a'}},
+    '네덜란드': {rating:FAST,kit:{primary:'#ef7a26',secondary:'#111111',shorts:'#ef7a26',socks:'#ef7a26',trim:'#111111',gkPrimary:'#58a764'}},
+    '우루과이': {rating:SHOT,kit:{primary:'#79c5ed',secondary:'#111111',shorts:'#111111',socks:'#79c5ed',trim:'#ffffff',gkPrimary:'#e8c640'}},
+    '벨기에': {rating:SHOT,kit:{primary:'#d73c43',secondary:'#111111',shorts:'#111111',socks:'#d73c43',trim:'#e8c43b',gkPrimary:'#5a8f5a'}},
+    '이탈리아': {rating:PASS,kit:{primary:'#2f69bd',secondary:'#ffffff',shorts:'#ffffff',socks:'#2f69bd',trim:'#ffffff',gkPrimary:'#5a8f5a'}},
+    '미국': {rating:BALANCED,kit:{primary:'#f1f3f8',secondary:'#d53b4c',shorts:'#233d78',socks:'#f1f3f8',trim:'#233d78',gkPrimary:'#e7a843'}},
+    '멕시코': {rating:PASS,kit:{primary:'#25804c',secondary:'#ffffff',shorts:'#f1f1e8',socks:'#c64043',trim:'#c64043',gkPrimary:'#e4bd43'}},
+    '캐나다': {rating:FAST,kit:{primary:'#d83f4a',secondary:'#ffffff',shorts:'#d83f4a',socks:'#d83f4a',trim:'#ffffff',gkPrimary:'#e6b74c'}},
+    '콜롬비아': {rating:SHOT,kit:{primary:'#e8c53c',secondary:'#203c75',shorts:'#203c75',socks:'#d94d4d',trim:'#d94d4d',gkPrimary:'#7654b9'}},
+    '칠레': {rating:BALANCED,kit:{primary:'#da4148',secondary:'#ffffff',shorts:'#234581',socks:'#f5f5f5',trim:'#ffffff',gkPrimary:'#e6b74c'}},
+    '스위스': {rating:PASS,kit:{primary:'#d94349',secondary:'#ffffff',shorts:'#f5f5f5',socks:'#d94349',trim:'#ffffff',gkPrimary:'#7663b9'}},
+    '스웨덴': {rating:PASS,kit:{primary:'#e9c746',secondary:'#2f67ab',shorts:'#2f67ab',socks:'#e9c746',trim:'#2f67ab',gkPrimary:'#8952aa'}},
+    '덴마크': {rating:BALANCED,kit:{primary:'#cf3c46',secondary:'#ffffff',shorts:'#ffffff',socks:'#cf3c46',trim:'#ffffff',gkPrimary:'#eba643'}},
+    '노르웨이': {rating:FAST,kit:{primary:'#d5444d',secondary:'#224279',shorts:'#f5f5f5',socks:'#224279',trim:'#ffffff',gkPrimary:'#e6bb48'}},
+    '폴란드': {rating:SHOT,kit:{primary:'#f5f4f0',secondary:'#d8474e',shorts:'#d8474e',socks:'#f5f4f0',trim:'#d8474e',gkPrimary:'#7959b6'}},
+    '튀르키예': {rating:SHOT,kit:{primary:'#d7434b',secondary:'#ffffff',shorts:'#d7434b',socks:'#d7434b',trim:'#ffffff',gkPrimary:'#e4b84a'}},
+    '모로코': {rating:FAST,kit:{primary:'#c93e47',secondary:'#268555',shorts:'#268555',socks:'#c93e47',trim:'#f1e4b4',gkPrimary:'#e4b84a'}},
+    '세네갈': {rating:FAST,kit:{primary:'#f1f1e8',secondary:'#33945d',shorts:'#f1f1e8',socks:'#33945d',trim:'#e3bd45',gkPrimary:'#8d58b6'}},
+    '나이지리아': {rating:FAST,kit:{primary:'#3ba470',secondary:'#ffffff',shorts:'#f5f5ee',socks:'#3ba470',trim:'#ffffff',gkPrimary:'#e2b144'}},
+    '가나': {rating:SHOT,kit:{primary:'#f3f1e4',secondary:'#d74c4d',shorts:'#f3f1e4',socks:'#f3f1e4',trim:'#e7bf4e',gkPrimary:'#7654b9'}},
+    '카메룬': {rating:SHOT,kit:{primary:'#27844d',secondary:'#d64648',shorts:'#d64648',socks:'#e2c149',trim:'#e2c149',gkPrimary:'#8255ad'}},
+    '이집트': {rating:PASS,kit:{primary:'#cf3e47',secondary:'#f3f2ec',shorts:'#1d2733',socks:'#1d2733',trim:'#f3f2ec',gkPrimary:'#e4bd48'}},
+    '남아공': {rating:FAST,kit:{primary:'#e8c746',secondary:'#27834e',shorts:'#27834e',socks:'#e8c746',trim:'#27834e',gkPrimary:'#8058b4'}},
+    '호주': {rating:FAST,kit:{primary:'#edc83d',secondary:'#27824f',shorts:'#27824f',socks:'#edc83d',trim:'#27824f',gkPrimary:'#7d5db4'}},
+    '이란': {rating:PASS,kit:{primary:'#f3f2eb',secondary:'#3a9a6a',shorts:'#f3f2eb',socks:'#f3f2eb',trim:'#d6494c',gkPrimary:'#e6b84a'}},
+    '사우디': {rating:PASS,kit:{primary:'#f2f3ec',secondary:'#278453',shorts:'#f2f3ec',socks:'#f2f3ec',trim:'#278453',gkPrimary:'#ddae45'}},
+    '카타르': {rating:BALANCED,kit:{primary:'#923a5c',secondary:'#f4f0eb',shorts:'#923a5c',socks:'#923a5c',trim:'#f4f0eb',gkPrimary:'#deb746'}},
+    '코스타리카': {rating:FAST,kit:{primary:'#d4454b',secondary:'#24467f',shorts:'#24467f',socks:'#f3f2eb',trim:'#f3f2eb',gkPrimary:'#e0b646'}},
+    '에콰도르': {rating:SHOT,kit:{primary:'#e8c539',secondary:'#284f94',shorts:'#284f94',socks:'#d4494a',trim:'#d4494a',gkPrimary:'#8356b4'}},
+    '파라과이': {rating:BALANCED,kit:{primary:'#f3f2eb',secondary:'#d34d55',shorts:'#244984',socks:'#244984',trim:'#d34d55',gkPrimary:'#e2b647'}},
+    '베네수엘라': {rating:PASS,kit:{primary:'#9a3e5c',secondary:'#e6c64d',shorts:'#9a3e5c',socks:'#9a3e5c',trim:'#e6c64d',gkPrimary:'#4e9e6c'}},
+    '세르비아': {rating:SHOT,kit:{primary:'#d44950',secondary:'#f5f2ed',shorts:'#244580',socks:'#f5f2ed',trim:'#f5f2ed',gkPrimary:'#e2b74b'}},
+    '우크라이나': {rating:FAST,kit:{primary:'#e6c944',secondary:'#2a75ba',shorts:'#2a75ba',socks:'#e6c944',trim:'#2a75ba',gkPrimary:'#8058b5'}},
+    '그리스': {rating:PASS,kit:{primary:'#f3f4f2',secondary:'#3380c4',shorts:'#3380c4',socks:'#f3f4f2',trim:'#3380c4',gkPrimary:'#e7b84b'}},
+    '오스트리아': {rating:BALANCED,kit:{primary:'#d5484d',secondary:'#f5f3ee',shorts:'#f5f3ee',socks:'#d5484d',trim:'#f5f3ee',gkPrimary:'#e2b249'}},
+    '체코': {rating:SHOT,kit:{primary:'#d44950',secondary:'#2b5599',shorts:'#2b5599',socks:'#d44950',trim:'#f4f1eb',gkPrimary:'#e4b64c'}},
+    '슬로베니아': {rating:PASS,kit:{primary:'#f3f3ee',secondary:'#4b95c7',shorts:'#4b95c7',socks:'#f3f3ee',trim:'#4b95c7',gkPrimary:'#e1b448'}},
+    '자메이카': {rating:FAST,kit:{primary:'#e8c846',secondary:'#168a56',shorts:'#151b1c',socks:'#e8c846',trim:'#151b1c',gkPrimary:'#8356b4'}},
+    '아이슬란드': {rating:BALANCED,kit:{primary:'#3376c1',secondary:'#f2f2ed',shorts:'#3376c1',socks:'#3376c1',trim:'#d44950',gkPrimary:'#e2b54b'}}
   };
+
+  function colorDistance(a,b) {
+    const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+    const x=rgb(a),y=rgb(b);
+    return Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2]);
+  }
+
+  function awayKitFor(kit) {
+    const light=colorDistance(kit.primary,'#ffffff')<colorDistance(kit.primary,'#20335d');
+    const base=light?'#20335d':'#f5f3ed';
+    return {primary:base,secondary:kit.primary,shorts:base,socks:base,trim:light?'#f5f3ed':'#20335d',gkPrimary:kit.gkPrimary};
+  }
+
+  function matchKits(home,away) {
+    const first=home.kit;
+    const second=colorDistance(first.primary,away.kit.primary)<125?away.awayKit:away.kit;
+    const keeper=kit=>{
+      const shirt=[kit.gkPrimary,'#ecb446','#8756b3','#42b8aa'].find(color=>
+        colorDistance(color,first.primary)>100&&colorDistance(color,second.primary)>100);
+      return {...kit,gkPrimary:shirt||'#ecb446'};
+    };
+    return [keeper(first),keeper(second)];
+  }
 
   const countries = [
     ['🇦🇷','아르헨티나','#62b4ff'],['🇧🇷','브라질','#f5cf35'],['🇫🇷','프랑스','#2261d6'],['🇩🇪','독일','#e4b441'],
@@ -32,18 +91,10 @@
     ['🇷🇸','세르비아','#de4a51'],['🇺🇦','우크라이나','#e5c943'],['🇬🇷','그리스','#397dcc'],['🇦🇹','오스트리아','#df4e52'],
     ['🇨🇿','체코','#df5053'],['🇸🇮','슬로베니아','#3980c8'],['🇯🇲','자메이카','#42a366'],['🇮🇸','아이슬란드','#4b82d5']
   ].map(([flag,name,color],id)=>{
-    const profile=TEAM_PROFILES[name]||{};
+    const profile=TEAM_PROFILES[name];
     return {
       id,flag,name,color,
-      rating:{speed:1,pass:1,shot:1,...profile.rating},
-      kit:{
-        primary:profile.kit?.primary||color,
-        secondary:profile.kit?.secondary||'#ffffff',
-        shorts:profile.kit?.shorts||'#17352f',
-        socks:profile.kit?.socks||profile.kit?.primary||color,
-        trim:profile.kit?.trim||'#ffffff',
-        gkPrimary:profile.kit?.gkPrimary||'#f4c542'
-      }
+      rating:profile.rating,kit:profile.kit,awayKit:awayKitFor(profile.kit)
     };
   });
 
@@ -66,6 +117,15 @@
     set(key,value) { try { localStorage.setItem(key,JSON.stringify(value)); } catch {} }
   };
 
+  const playerSprites={idle:[],run:[],kick:[]};
+  fetch('assets/players/manifest.json').then(response=>response.json()).then(manifest=>{
+    for(const state of Object.keys(playerSprites)){
+      for(const file of manifest[state]||[]){
+        const image=new Image();image.src=`assets/players/${file}`;playerSprites[state].push(image);
+      }
+    }
+  }).catch(()=>{});
+
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
   let pointer=null, messageTimer=0;
@@ -87,10 +147,15 @@
     screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
   }
 
+  function skillDots(value) {
+    const filled=value>=1.015?4:value>=.985?3:2;
+    return '●'.repeat(filled)+'○'.repeat(4-filled);
+  }
+
   function showTeams(nextMode) {
     mode=nextMode; appScreen='teams'; screen.className='screen';
     const chosen=countries[selectedCountry];
-    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge">선택한 팀 · ${chosen.flag} ${chosen.name} · 속도 ${Math.round(chosen.rating.speed*100)} · 패스 ${Math.round(chosen.rating.pass*100)} · 슛 ${Math.round(chosen.rating.shot*100)}</p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
+    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
   }
 
   function chooseOpponent() {
@@ -110,7 +175,7 @@
 
   function startMatch() {
     const home=countries[selectedCountry], away=chooseOpponent();
-    game={home,away,mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.9+cupRound*.3:.45,
+    game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.9+cupRound*.3:.45,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
       controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0};
     resetPositions(0);cameraY=52.5;
@@ -158,6 +223,7 @@
   function moveToward(p,x,y,dt,mult=1) {
     const dx=x-p.x,dy=y-p.y,d=Math.hypot(dx,dy); if(d<.25)return;
     const step=Math.min(d,p.speed*mult*dt); p.x+=dx/d*step;p.y+=dy/d*step;
+    if(game&&step>.02)p.runUntil=game.elapsed+.16;
   }
 
   function nearestPlayer(side,x,y,exclude=null) {
@@ -235,6 +301,7 @@
     ball.x=p.x+dx/length*2.45; ball.y=p.y+dy/length*2.45;
     const skill=shot?(p.team?.rating?.shot||1):(p.team?.rating?.pass||1);
     const speed=((shot?35:23)+strength*(shot?28:17))*skill; ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
+    p.kickUntil=game.elapsed+.25;
     sfx(shot?'kick':'pass');
   }
 
@@ -391,24 +458,40 @@
     return {x:clamp((px-size.w/2)/(size.w*.46/34*perspective),-34,34),y};
   }
 
-  function drawField() {
+  function drawStadiumBackground() {
     const {w,h}=size;
     const sky=ctx.createLinearGradient(0,0,0,h);sky.addColorStop(0,'#64d8c1');sky.addColorStop(.28,'#17866d');sky.addColorStop(.44,'#0a513f');sky.addColorStop(1,'#06402e');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#ffffff16';ctx.beginPath();ctx.moveTo(w*.15,0);ctx.lineTo(w*.31,0);ctx.lineTo(w*.53,h*.4);ctx.lineTo(w*.42,h*.4);ctx.fill();
+    ctx.beginPath();ctx.moveTo(w*.72,0);ctx.lineTo(w*.85,0);ctx.lineTo(w*.6,h*.36);ctx.lineTo(w*.52,h*.36);ctx.fill();
     ctx.fillStyle='#174a42';ctx.fillRect(0,62,w,Math.max(20,h*.07));
     for(let row=0;row<3;row++){
       ctx.fillStyle=row%2?'#276359':'#34776a';ctx.fillRect(0,63+row*8,w,6);
       for(let x=5;x<w;x+=14){ctx.fillStyle=['#e4a548','#df644d','#e9db83'][((x+row*9)/14|0)%3];ctx.fillRect(x,65+row*8,7,4);}
     }
-    const start=cameraStart(),end=start+CAMERA_SPAN;
+  }
+
+  function drawPitchSurface(start,end) {
     const tl=project(-34,start),tr=project(34,start),bl=project(-34,end),br=project(34,end);
     ctx.beginPath();ctx.moveTo(tl.x,tl.y);ctx.lineTo(tr.x,tr.y);ctx.lineTo(br.x,br.y);ctx.lineTo(bl.x,bl.y);ctx.closePath();ctx.fillStyle='#1e9d4d';ctx.fill();
-    ctx.strokeStyle='#d8f6d9';ctx.lineWidth=1.3;ctx.globalAlpha=.88;
-    const line=(coords)=>{ctx.beginPath();coords.forEach(([x,y],i)=>{const p=project(x,y);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);});ctx.stroke();};
-    line([[-34,start],[34,start],[34,end],[-34,end],[-34,start]]);
     for(let y=Math.floor(start/10.5)*10.5,index=0;y<end;y+=10.5,index++){
       if(index%2)continue;const a=project(-34,Math.max(start,y)),b=project(34,Math.max(start,y)),c=project(34,Math.min(end,y+10.5)),d=project(-34,Math.min(end,y+10.5));
       ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.closePath();ctx.fillStyle='#ffffff0b';ctx.fill();
     }
+    ctx.fillStyle='#d5eeb6';
+    for(const [edge,other] of [[tl,bl],[tr,br]]){
+      ctx.beginPath();ctx.moveTo(edge.x,edge.y);ctx.lineTo(other.x,other.y);ctx.lineTo(other.x+(other.x<size.w/2?-8:8),other.y);ctx.lineTo(edge.x+(edge.x<size.w/2?-5:5),edge.y);ctx.closePath();ctx.fill();
+    }
+    ctx.fillStyle='#45b3a2';
+    for(let i=0;i<8;i++){
+      const y=start+(end-start)*(i+.5)/8,p=project(i%2?-34:34,y),out=i%2?-11:11;
+      ctx.fillRect(p.x+out,p.y-2,5,4);
+    }
+  }
+
+  function drawFieldLines(start,end) {
+    ctx.strokeStyle='#d8f6d9';ctx.lineWidth=1.3;ctx.globalAlpha=.88;
+    const line=(coords)=>{ctx.beginPath();coords.forEach(([x,y],i)=>{const p=project(x,y);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);});ctx.stroke();};
+    line([[-34,start],[34,start],[34,end],[-34,end],[-34,start]]);
     if(start<=52.5&&end>=52.5)line([[-34,52.5],[34,52.5]]);
     for(const [cx,cy,rx,ry] of [[0,52.5,10,8],[0,7,18,10],[0,98,18,10]]){
       if(cy+ry<start||cy-ry>end)continue;
@@ -422,17 +505,28 @@
     if(start<=2)drawGoal(0);if(end>=103)drawGoal(105);
   }
 
+  function drawField() {
+    const start=cameraStart(),end=start+CAMERA_SPAN;
+    drawStadiumBackground();drawPitchSurface(start,end);drawFieldLines(start,end);
+  }
+
   function drawGoal(y) {
     const a=project(-9,y),b=project(9,y), depth=y<50?1:-1;
     ctx.strokeStyle='#e8fff2';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(b.x+depth*7,b.y+depth*4);ctx.lineTo(a.x+depth*7,a.y+depth*4);ctx.closePath();ctx.stroke();
-    ctx.strokeStyle='#ffffff55';ctx.lineWidth=1;for(let i=1;i<5;i++){const x=a.x+(b.x-a.x)*i/5;ctx.beginPath();ctx.moveTo(x,a.y);ctx.lineTo(x+depth*6,a.y+depth*4);ctx.stroke();}
+    ctx.strokeStyle='#ffffff88';ctx.lineWidth=1;for(let i=1;i<6;i++){const x=a.x+(b.x-a.x)*i/6;ctx.beginPath();ctx.moveTo(x,a.y);ctx.lineTo(x+depth*6,a.y+depth*4);ctx.stroke();}
+    for(let i=1;i<3;i++){const t=i/3;ctx.beginPath();ctx.moveTo(a.x+depth*7*t,a.y+depth*4*t);ctx.lineTo(b.x+depth*7*t,b.y+depth*4*t);ctx.stroke();}
   }
 
   function drawPlayer(p) {
     const pt=project(p.x,p.y),radius=8.5*pt.scale+(p.role==='GK'?1:0);
-    const kit=p.team?.kit||{primary:p.color||'#d5ff45',secondary:'#ffffff',shorts:'#17352f',socks:p.color||'#d5ff45',trim:'#ffffff',gkPrimary:'#f4c542'};
+    const kit=game?.kits?.[p.side]||p.team?.kit||{primary:p.color||'#d5ff45',secondary:'#ffffff',shorts:'#17352f',socks:p.color||'#d5ff45',trim:'#ffffff',gkPrimary:'#f4c542'};
     const shirt=p.role==='GK'?kit.gkPrimary:kit.primary;
     ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
+
+    const state=game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
+    const frames=playerSprites[state],image=frames.length?frames[Math.floor((game?.elapsed||0)*8)%frames.length]:null;
+    const hasSprite=image?.complete&&image.naturalWidth>0;
+    if(hasSprite)ctx.drawImage(image,pt.x-radius*1.6,pt.y-radius*1.42,radius*3.2,radius*3.4);
 
     // shirt
     ctx.fillStyle=shirt;ctx.strokeStyle=kit.trim||'#fff';ctx.lineWidth=1.2*pt.scale;
@@ -452,8 +546,13 @@
     ctx.moveTo(pt.x+radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x+radius*.3,pt.y+radius*1.28);ctx.stroke();
 
     // head
-    ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
+    if(!hasSprite){
+      ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
+    }
+    if(p.role==='GK'){
+      ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(pt.x-radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.arc(pt.x+radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.fill();
+    }
 
     if(game&&p===game.ball.owner){ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();ctx.arc(pt.x,pt.y,radius+4,0,Math.PI*2);ctx.stroke();}
     if(game&&p.side===0&&p.index===game.controlled){ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(pt.x,pt.y-radius-5);ctx.lineTo(pt.x-4,pt.y-radius-11);ctx.lineTo(pt.x+4,pt.y-radius-11);ctx.fill();}
@@ -475,7 +574,7 @@
     if(Number.isFinite(game.aim.rawScreenX)&&Number.isFinite(game.aim.rawScreenY)){
       ctx.save();
       ctx.strokeStyle='#ffffffb8';ctx.lineWidth=2;ctx.setLineDash([4,4]);
-      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(game.aim.rawScreenX,game.aim.rawScreenY);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(game.aim.startScreenX,game.aim.startScreenY);ctx.lineTo(game.aim.rawScreenX,game.aim.rawScreenY);ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle='#ffffffde';ctx.beginPath();ctx.arc(game.aim.rawScreenX,game.aim.rawScreenY,5,0,Math.PI*2);ctx.fill();
       ctx.strokeStyle='#123e36';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(game.aim.rawScreenX,game.aim.rawScreenY,8,0,Math.PI*2);ctx.stroke();
@@ -483,8 +582,10 @@
     }
 
     // colored line = interpreted pass/shot direction
-    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle=color;ctx.beginPath();ctx.arc(b.x,b.y,game.aim.kind==='pass'?6:4,0,Math.PI*2);ctx.fill();
+    if(game.aim.kind!=='move'){
+      ctx.strokeStyle=color;ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=color;ctx.beginPath();ctx.arc(b.x,b.y,game.aim.kind==='pass'?6:4,0,Math.PI*2);ctx.fill();
+    }
     if(game.aim.target){
       const t=project(game.aim.target.x,game.aim.target.y);ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(t.x,t.y,11*t.scale,0,Math.PI*2);ctx.stroke();
     }
@@ -516,9 +617,20 @@
     return nearBall;
   }
 
-  function resolveGesture(p,dx,dy,length) {
-    if(length<1.35)return {kind:'hold',dx:0,dy:0,power:0,target:null};
-    if(isShotGesture(p,dx,dy,length))return {kind:'shot',dx,dy,power:clamp(length/13,.42,1),target:null};
+  function gestureMetrics(active,point,time) {
+    const px=point.x-active.start.x,py=point.y-active.start.y;
+    const distance=Math.hypot(px,py)/size.w;
+    const duration=Math.max((time-active.startTime)/1000,.05);
+    return {dx:px*active.worldPerPixelX,dy:py*active.worldPerPixelY,distance,speed:distance/duration};
+  }
+
+  function resolveGesture(p,{dx,dy,distance,speed}) {
+    const length=Math.hypot(dx,dy);
+    if(distance<.035||speed<.55)return {kind:'move',dx:0,dy:0,power:0,target:null};
+    if(distance>=.16&&speed>=.7&&isShotGesture(p,dx,dy,length)){
+      const goalY=attackGoal(p.side),x=clamp(p.x+dx*(goalY-p.y)/dy,-8,8);
+      return {kind:'shot',dx:x-p.x,dy:goalY-p.y,power:clamp(length/13,.42,1),target:null};
+    }
     const target=passTargetFor(p,dx,dy);
     if(target){
       const leadY=clamp(target.y+Math.sign(attackGoal(p.side)-target.y)*1.8,1,104);
@@ -534,25 +646,28 @@
   }
 
   canvas.addEventListener('pointerdown',event=>{
-    if(appScreen!=='match'||!game)return;
+    if(appScreen!=='match'||!game||pointer)return;
     event.preventDefault();canvas.setPointerCapture(event.pointerId);
     const startPoint=canvasPoint(event),world=unproject(startPoint.x,startPoint.y),selected=chooseControlledPlayer(world);
     if(!selected)return;
     game.controlled=selected.index;
-    pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:startPoint,last:startPoint,worldStart:world};
-    game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,rawScreenX:startPoint.x,rawScreenY:startPoint.y,kind:'move',target:null};
+    const scale=project(selected.x,selected.y).scale;
+    pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:startPoint,last:startPoint,startTime:event.timeStamp,
+      worldPerPixelX:34/(size.w*.46*scale),worldPerPixelY:CAMERA_SPAN/(size.h-82)};
+    game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,startScreenX:startPoint.x,startScreenY:startPoint.y,rawScreenX:startPoint.x,rawScreenY:startPoint.y,kind:'move',target:null};
     if(!muted)ensureAudio();
   });
 
   canvas.addEventListener('pointermove',event=>{
     if(!pointer||pointer.id!==event.pointerId||!game)return;event.preventDefault();
-    const point=canvasPoint(event),current=unproject(point.x,point.y),delta={x:current.x-pointer.worldStart.x,y:current.y-pointer.worldStart.y};
+    const point=canvasPoint(event),metrics=gestureMetrics(pointer,point,event.timeStamp),delta={x:metrics.dx,y:metrics.dy};
     const dragLength=Math.hypot(delta.x,delta.y),scale=Math.min(1,14/(dragLength||1));
     const p=pointer.player;p.targetX=clamp(pointer.origin.x+delta.x*scale,-33,33);p.targetY=clamp(pointer.origin.y+delta.y*scale,3,102);
-    const intent=game.ball.owner===p?resolveGesture(p,delta.x,delta.y,dragLength):{kind:'move',target:null};
-    const aimDx=intent.kind==='pass'&&intent.target?intent.dx:delta.x*2;
-    const aimDy=intent.kind==='pass'&&intent.target?intent.dy:delta.y*2;
-    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,-33,33),toY:clamp(p.y+aimDy,0,105),rawScreenX:point.x,rawScreenY:point.y,kind:intent.kind,target:intent.target||null};
+    const intent=game.ball.owner===p?resolveGesture(p,metrics):{kind:'move',target:null};
+    const aimDx=intent.kind==='pass'&&intent.target?intent.dx:intent.kind==='shot'?intent.dx:delta.x*2;
+    const aimDy=intent.kind==='pass'&&intent.target?intent.dy:intent.kind==='shot'?intent.dy:delta.y*2;
+    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,-33,33),toY:clamp(p.y+aimDy,0,105),startScreenX:pointer.start.x,startScreenY:pointer.start.y,
+      rawScreenX:point.x,rawScreenY:point.y,kind:intent.kind,target:intent.target||null};
     pointer.last=point;
   });
 
@@ -561,10 +676,9 @@
     if(!cancelled)event.preventDefault();
     const p=pointer.player;
     const endPoint=cancelled?pointer.last:canvasPoint(event);
-    const end=unproject(endPoint.x,endPoint.y),start=pointer.worldStart;
-    const dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);
+    const metrics=gestureMetrics(pointer,endPoint,event.timeStamp),{dx,dy}=metrics,length=Math.hypot(dx,dy);
     if(!cancelled&&game.ball.owner===p){
-      const intent=resolveGesture(p,dx,dy,length);
+      const intent=resolveGesture(p,metrics);
       if(intent.kind==='shot')kick(p,intent.dx,intent.dy,intent.power,true);
       else if(intent.kind==='pass')kick(p,intent.dx,intent.dy,intent.power,false);
     }else if(!cancelled&&length>=1.15){
@@ -575,8 +689,8 @@
 
   canvas.addEventListener('pointerup',event=>finishPointer(event,false));
   canvas.addEventListener('pointercancel',event=>finishPointer(event,true));
-  canvas.addEventListener('lostpointercapture',()=>clearPointer());
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearPointer();});
+  canvas.addEventListener('lostpointercapture',event=>{if(pointer?.id===event.pointerId)clearPointer();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){clearPointer();pauseGame();}});
 
   function ensureAudio() {
     if(!audioContext){const AudioCtx=window.AudioContext||window.webkitAudioContext;if(AudioCtx)audioContext=new AudioCtx();}
