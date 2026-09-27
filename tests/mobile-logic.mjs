@@ -4,18 +4,23 @@ import vm from 'node:vm';
 
 const listeners={canvas:{},document:{},screen:{}};
 const element=()=>({classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:''});
-const canvas={...element(),getContext:()=>({setTransform(){}}),getBoundingClientRect:()=>({left:0,top:0,width:390,height:844}),
+const drawImages=[];
+const ctx=new Proxy({setTransform(){},drawImage(...args){drawImages.push(args);}},
+  {get(target,key){return key in target?target[key]:()=>{};}});
+const canvas={...element(),getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:390,height:844}),
   setPointerCapture(){},addEventListener(type,fn){listeners.canvas[type]=fn;}};
 const screen={...element(),addEventListener(type,fn){listeners.screen[type]=fn;}};
 const elements=new Map([['#pitch',canvas],['#screen',screen]]);
 const document={hidden:false,querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector);},
   addEventListener(type,fn){listeners.document[type]=fn;}};
 const storage=new Map([['kkoma-cup-round','2'],['kkoma-muted','true']]);
-const context={document,window:{},devicePixelRatio:1,ResizeObserver:class{observe(){}},
+const spriteManifest=JSON.parse(readFileSync(new URL('../assets/players/manifest.json',import.meta.url),'utf8'));
+class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src='';}}
+const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObserver:class{observe(){}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
-  requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>({idle:[],run:[],kick:[]})})};
+  requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,game:()=>game,setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,game:()=>game,setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -147,4 +152,22 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(t.game().paused,false,'resume after tab switch');
 }
 assert.equal(storage.get('kkoma-cup-round'),'2','cup progress preserved');
-console.log('PASS: 48 teams, kit clashes, 20 short + 20 diagonal + 20 long passes, 20 first-half + 20 second-half shots, and mobile edge cases');
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(t.playerSprites.idle.field.length,3,'three Korea field idle sprites load');
+assert.ok(t.playerSprites.run.goalkeeper,'Korea goalkeeper run sprite loads');
+t.startMatch();
+const spriteGame=t.game(),fieldPlayer=spriteGame.players.find(player=>player.side===0&&player.role!=='GK');
+assert.equal(spriteGame.home.name,'대한민국','sprite match is Korea home');
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages.length,1,'loaded idle sprite is rendered');
+assert.equal(drawImages[0][0].src,`assets/players/korea/idle-${fieldPlayer.index%3+1}.webp`);
+t.playerSprites.idle.field[fieldPlayer.index%3].complete=false;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages.length,0,'Canvas fallback is used while sprite is unavailable');
+fieldPlayer.shotUntil=spriteGame.elapsed+1;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages.length,0,'ball-bearing shot frame is not loaded; Canvas fallback is used');
+fieldPlayer.shotUntil=0;fieldPlayer.kickUntil=spriteGame.elapsed+1;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages.length,0,'ball-bearing kick frame is not loaded; Canvas fallback is used');
+console.log('PASS: mobile logic, Korea idle/run sprite mapping, unavailable-image fallback, and kick/shot fallback');

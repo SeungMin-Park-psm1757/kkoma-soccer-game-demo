@@ -1,1 +1,14 @@
-{"idle":[],"run":[],"kick":[]}
+{
+  "korea": {
+    "idle": {
+      "field": ["korea/idle-1.webp", "korea/idle-2.webp", "korea/idle-3.webp"],
+      "goalkeeper": "korea/idle-gk.webp"
+    },
+    "run": {
+      "field": ["korea/run-1.webp", "korea/run-2.webp", "korea/run-3.webp"],
+      "goalkeeper": "korea/run-gk.webp"
+    },
+    "kick": { "field": [], "goalkeeper": null },
+    "shot": { "field": [], "goalkeeper": null }
+  }
+}
