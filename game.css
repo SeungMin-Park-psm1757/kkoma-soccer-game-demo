@@ -25,7 +25,7 @@ body { min-height:100dvh; overscroll-behavior:none; }
 .game-button.secondary { background:linear-gradient(#ffd769,#ffa51e); box-shadow:0 5px 0 #bd6500,0 9px 15px #001c18aa; }
 .game-button.ghost { min-height:44px; background:#ffffff18; color:white; box-shadow:none; border:1px solid #ffffff66; font-size:18px; }
 .game-button:active,.icon-button:active { transform:translateY(3px); box-shadow:0 2px 0 #315d10; }
-.selection-title { margin:0 0 6px; font:900 32px 'Malgun Gothic',system-ui,sans-serif; color:#ffe178; }
+.selection-title { margin:0 0 6px; font:900 clamp(25px,8vw,32px) 'Malgun Gothic',system-ui,sans-serif; color:#ffe178; }
 .selection-note { margin:0 0 12px; opacity:.86; }
 .team-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; width:min(100%,440px); max-height:min(49dvh,420px); overflow:auto; padding:4px 5px 10px; overscroll-behavior:contain; }
 .team-card { min-height:57px; padding:4px; border:1px solid #ffffff66; border-radius:13px; background:#073b32; color:white; font:14px 'Jua',sans-serif; }
@@ -33,6 +33,9 @@ body { min-height:100dvh; overscroll-behavior:none; }
 .flag { display:block; font-size:19px; }
 .panel .small { margin-top:11px; font-size:13px; opacity:.82; }
 .badge { display:inline-block; padding:5px 12px; border-radius:999px; background:#ffffff1f; color:#ffe993; font-size:14px; }
+.team-skills { width:100%; border-radius:16px; line-height:1.5; }
+.team-skills .skill-row { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; margin-top:2px; }
+.team-skills .skill-row span { font-size:12px; white-space:nowrap; }
 .hint { position:absolute; z-index:2; left:50%; bottom:max(19px,env(safe-area-inset-bottom)); transform:translateX(-50%); width:max-content; max-width:calc(100% - 28px); padding:9px 16px; border:1px solid #ffffff55; border-radius:999px; background:#062c25dc; text-align:center; font-size:15px; box-shadow:0 5px 15px #00171188; }
 .drag-hint { position:absolute; z-index:2; left:50%; bottom:max(14px,env(safe-area-inset-bottom)); transform:translateX(-50%); width:max-content; max-width:calc(100% - 20px); padding:9px 14px; border-radius:999px; color:#173411; background:#d7ff67; font-size:14px; }
 .result-score { margin:5px 0 16px; color:#e5ff7a; font:900 66px 'Malgun Gothic',system-ui,sans-serif; }
