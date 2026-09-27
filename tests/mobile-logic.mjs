@@ -153,15 +153,17 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
 }
 assert.equal(storage.get('kkoma-cup-round'),'2','cup progress preserved');
 await new Promise(resolve=>setTimeout(resolve,0));
-assert.equal(t.playerSprites.idle.field.length,3,'three Korea field idle sprites load');
-assert.ok(t.playerSprites.run.goalkeeper,'Korea goalkeeper run sprite loads');
+assert.equal(t.playerSprites.korea.idle.field.length,3,'three Korea field idle sprites load');
+assert.ok(t.playerSprites.korea.run.goalkeeper,'Korea goalkeeper run sprite loads');
 t.startMatch();
 const spriteGame=t.game(),fieldPlayer=spriteGame.players.find(player=>player.side===0&&player.role!=='GK');
 assert.equal(spriteGame.home.name,'대한민국','sprite match is Korea home');
+assert.equal(spriteGame.home.spriteKey,'korea','Korea team resolves generic sprite key');
+assert.equal(t.countries.filter(country=>country.spriteKey).length,1,'only teams with production sprites opt in');
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded idle sprite is rendered');
 assert.equal(drawImages[0][0].src,`assets/players/korea/idle-${fieldPlayer.index%3+1}.webp`);
-t.playerSprites.idle.field[fieldPlayer.index%3].complete=false;
+t.playerSprites.korea.idle.field[fieldPlayer.index%3].complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,0,'Canvas fallback is used while sprite is unavailable');
 fieldPlayer.shotUntil=spriteGame.elapsed+1;
