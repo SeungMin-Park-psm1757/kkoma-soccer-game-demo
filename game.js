@@ -126,6 +126,30 @@
     }
   }).catch(()=>{});
 
+  // Production-art bridge: use the approved Korea 4x4 concept sheet directly for
+  // safe states (idle/run) until Codex exports ball-free per-frame sprites.
+  const koreaCharacterSheet=new Image();
+  koreaCharacterSheet.src='assets/players/character-sheet-korea-v2.png';
+
+  function koreaSheetCell(p,state) {
+    if(!game||p.side!==0||game.home?.name!=='대한민국')return null;
+    if(state!=='idle'&&state!=='run')return null;
+    if(!koreaCharacterSheet.complete||!koreaCharacterSheet.naturalWidth)return null;
+    const col=p.role==='GK'?3:p.index%3;
+    const row=state==='run'?1:0;
+    return {col,row};
+  }
+
+  function drawKoreaSheetPlayer(p,pt,radius,state) {
+    const cell=koreaSheetCell(p,state);
+    if(!cell)return false;
+    const sw=koreaCharacterSheet.naturalWidth/4,sh=koreaCharacterSheet.naturalHeight/4;
+    const sx=cell.col*sw,sy=cell.row*sh;
+    const dw=radius*3.15,dh=radius*3.35;
+    ctx.drawImage(koreaCharacterSheet,sx,sy,sw,sh,pt.x-dw/2,pt.y-radius*1.45,dw,dh);
+    return true;
+  }
+
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
   let pointer=null, messageTimer=0;
@@ -302,6 +326,7 @@
     const skill=shot?(p.team?.rating?.shot||1):(p.team?.rating?.pass||1);
     const speed=((shot?35:23)+strength*(shot?28:17))*skill; ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
     p.kickUntil=game.elapsed+.25;
+    p.shotUntil=shot?game.elapsed+.3:0;
     sfx(shot?'kick':'pass');
   }
 
@@ -523,35 +548,40 @@
     const shirt=p.role==='GK'?kit.gkPrimary:kit.primary;
     ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
 
-    const state=game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
-    const frames=playerSprites[state],image=frames.length?frames[Math.floor((game?.elapsed||0)*8)%frames.length]:null;
+    const state=game&&p.shotUntil>game.elapsed?'shot':game&&p.kickUntil>game.elapsed?'kick':game&&p.runUntil>game.elapsed?'run':'idle';
+    const usedKoreaSheet=drawKoreaSheetPlayer(p,pt,radius,state);
+
+    const frames=playerSprites[state]||playerSprites[state==='shot'?'kick':state]||[];
+    const image=!usedKoreaSheet&&frames.length?frames[Math.floor((game?.elapsed||0)*8)%frames.length]:null;
     const hasSprite=image?.complete&&image.naturalWidth>0;
     if(hasSprite)ctx.drawImage(image,pt.x-radius*1.6,pt.y-radius*1.42,radius*3.2,radius*3.4);
 
-    // shirt
-    ctx.fillStyle=shirt;ctx.strokeStyle=kit.trim||'#fff';ctx.lineWidth=1.2*pt.scale;
-    ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*.92,radius*.42);ctx.fill();ctx.stroke();
+    if(!usedKoreaSheet){
+      // shirt
+      ctx.fillStyle=shirt;ctx.strokeStyle=kit.trim||'#fff';ctx.lineWidth=1.2*pt.scale;
+      ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*.92,radius*.42);ctx.fill();ctx.stroke();
 
-    // simple national-kit accent
-    ctx.fillStyle=kit.secondary;ctx.globalAlpha=.9;
-    ctx.fillRect(pt.x-radius*.08,pt.y-radius*.1,radius*.16,radius*.72);
-    ctx.globalAlpha=1;
+      // simple national-kit accent
+      ctx.fillStyle=kit.secondary;ctx.globalAlpha=.9;
+      ctx.fillRect(pt.x-radius*.08,pt.y-radius*.1,radius*.16,radius*.72);
+      ctx.globalAlpha=1;
 
-    // shorts
-    ctx.fillStyle=kit.shorts;ctx.beginPath();ctx.roundRect(pt.x-radius*.62,pt.y+radius*.58,radius*1.24,radius*.48,radius*.18);ctx.fill();
+      // shorts
+      ctx.fillStyle=kit.shorts;ctx.beginPath();ctx.roundRect(pt.x-radius*.62,pt.y+radius*.58,radius*1.24,radius*.48,radius*.18);ctx.fill();
 
-    // socks/legs
-    ctx.strokeStyle=kit.socks;ctx.lineWidth=2.1*pt.scale;
-    ctx.beginPath();ctx.moveTo(pt.x-radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x-radius*.3,pt.y+radius*1.28);
-    ctx.moveTo(pt.x+radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x+radius*.3,pt.y+radius*1.28);ctx.stroke();
+      // socks/legs
+      ctx.strokeStyle=kit.socks;ctx.lineWidth=2.1*pt.scale;
+      ctx.beginPath();ctx.moveTo(pt.x-radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x-radius*.3,pt.y+radius*1.28);
+      ctx.moveTo(pt.x+radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x+radius*.3,pt.y+radius*1.28);ctx.stroke();
 
-    // head
-    if(!hasSprite){
-      ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
-    }
-    if(p.role==='GK'){
-      ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(pt.x-radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.arc(pt.x+radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.fill();
+      // head
+      if(!hasSprite){
+        ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
+      }
+      if(p.role==='GK'){
+        ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(pt.x-radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.arc(pt.x+radius*.9,pt.y+radius*.35,radius*.28,0,Math.PI*2);ctx.fill();
+      }
     }
 
     if(game&&p===game.ball.owner){ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();ctx.arc(pt.x,pt.y,radius+4,0,Math.PI*2);ctx.stroke();}
