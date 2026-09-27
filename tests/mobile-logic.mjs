@@ -181,4 +181,26 @@ assert.equal(drawImages[0][0].src,`assets/players/korea/pass-${fieldPlayer.index
 t.playerSprites.korea.kick.field[fieldPlayer.index%3].complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,0,'Canvas fallback is used when pass sprite fails to load');
-console.log('PASS: mobile logic, Korea idle/run/pass/shot sprite mapping, and unavailable-image fallback');
+t.playerSprites.korea.kick.field[fieldPlayer.index%3].complete=true;
+
+// Action states must yield back to locomotion without sticking.
+fieldPlayer.runUntil=spriteGame.elapsed+2;
+fieldPlayer.actionStartedAt=spriteGame.elapsed;
+fieldPlayer.kickUntil=spriteGame.elapsed+.26;
+fieldPlayer.shotUntil=0;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.match(drawImages[0][0].src,/\/pass-\d\.webp$/,'pass state takes priority over run');
+advance(.3);
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'pass returns to run');
+
+fieldPlayer.actionStartedAt=spriteGame.elapsed;
+fieldPlayer.kickUntil=spriteGame.elapsed+.36;
+fieldPlayer.shotUntil=spriteGame.elapsed+.36;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.match(drawImages[0][0].src,/\/shot-\d\.webp$/,'shot state takes priority over run');
+advance(.4);
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'shot returns to run');
+
+console.log('PASS: mobile logic, Korea idle/run/pass/shot sprite mapping, action transitions, and unavailable-image fallback');
