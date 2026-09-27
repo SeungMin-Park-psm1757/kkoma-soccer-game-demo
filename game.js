@@ -1,0 +1,375 @@
+(() => {
+  'use strict';
+
+  const countries = [
+    ['🇦🇷','아르헨티나','#62b4ff'],['🇧🇷','브라질','#f5cf35'],['🇫🇷','프랑스','#2261d6'],['🇩🇪','독일','#e4b441'],
+    ['🇪🇸','스페인','#df3434'],['🇵🇹','포르투갈','#16874b'],['🇰🇷','대한민국','#ffffff'],['🇯🇵','일본','#e9424d'],
+    ['🇺🇸','미국','#397bd2'],['🇲🇽','멕시코','#188354'],['🇨🇦','캐나다','#df4052'],['🇺🇾','우루과이','#73bce9'],
+    ['🇨🇴','콜롬비아','#e6ba28'],['🇨🇱','칠레','#d73a42'],['🇳🇱','네덜란드','#f07d2e'],['🇧🇪','벨기에','#e64d4d'],
+    ['🇭🇷','크로아티아','#f05458'],['🇮🇹','이탈리아','#319a68'],['🇬🇧','잉글랜드','#eeeeee'],['🇨🇭','스위스','#d93636'],
+    ['🇸🇪','스웨덴','#3180dc'],['🇩🇰','덴마크','#df4247'],['🇳🇴','노르웨이','#e94c4f'],['🇵🇱','폴란드','#eeeeee'],
+    ['🇹🇷','튀르키예','#d94b55'],['🇲🇦','모로코','#d94b55'],['🇸🇳','세네갈','#39a864'],['🇳🇬','나이지리아','#49a863'],
+    ['🇬🇭','가나','#e9c53c'],['🇨🇲','카메룬','#4ca75e'],['🇪🇬','이집트','#d94a45'],['🇿🇦','남아공','#43a477'],
+    ['🇦🇺','호주','#3976c7'],['🇮🇷','이란','#45a66b'],['🇸🇦','사우디','#55a66b'],['🇶🇦','카타르','#9e526e'],
+    ['🇨🇷','코스타리카','#e64b51'],['🇪🇨','에콰도르','#e2be34'],['🇵🇾','파라과이','#e34f56'],['🇻🇪','베네수엘라','#e9be37'],
+    ['🇷🇸','세르비아','#de4a51'],['🇺🇦','우크라이나','#e5c943'],['🇬🇷','그리스','#397dcc'],['🇦🇹','오스트리아','#df4e52'],
+    ['🇨🇿','체코','#df5053'],['🇸🇮','슬로베니아','#3980c8'],['🇯🇲','자메이카','#42a366'],['🇮🇸','아이슬란드','#4b82d5']
+  ].map(([flag,name,color],id)=>({id,flag,name,color}));
+
+  const canvas = document.querySelector('#pitch');
+  const ctx = canvas.getContext('2d');
+  const screen = document.querySelector('#screen');
+  const hud = document.querySelector('#hud');
+  const hint = document.querySelector('#hint');
+  const dragHint = document.querySelector('#drag-hint');
+  const $ = (selector) => document.querySelector(selector);
+  const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
+  const random = (min,max) => min + Math.random() * (max-min);
+  const roundNames = ['32강','16강','8강','4강','결승'];
+  const formation = [
+    [0,0,5.2,'GK'],[-22,25,5.5,'DF'],[-8,19,5.8,'DF'],[8,19,5.8,'DF'],[22,25,5.5,'DF'],
+    [-19,49,6.2,'MF'],[-6,43,6.4,'MF'],[7,43,6.4,'MF'],[19,49,6.2,'MF'],[-9,70,6.7,'FW'],[9,70,6.7,'FW']
+  ];
+  const store = {
+    get(key,fallback) { try { const v=localStorage.getItem(key); return v===null?fallback:JSON.parse(v); } catch { return fallback; } },
+    set(key,value) { try { localStorage.setItem(key,JSON.stringify(value)); } catch {} }
+  };
+
+  let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
+  let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
+  let pointer=null, messageTimer=0;
+
+  function resize() {
+    const rect=canvas.getBoundingClientRect(); size.w=rect.width; size.h=rect.height; size.dpr=Math.min(devicePixelRatio||1,2);
+    canvas.width=Math.round(size.w*size.dpr); canvas.height=Math.round(size.h*size.dpr);
+    ctx.setTransform(size.dpr,0,0,size.dpr,0,0);
+  }
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+
+  function logo() {
+    return `<svg class="ball-logo" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="53" fill="#fff" stroke="#d6e6c8" stroke-width="4"/><path d="m60 25 17 12-6 20H49l-6-20zM28 49l15-12 6 20-15 12zM92 49 77 37l-6 20 15 12zM49 57h22l12 17-9 19H46l-9-19zM28 69l15 5 3 19-18-10zM92 69l-15 5-3 19 18-10z" fill="#122e27"/><path d="M60 25v-8m33 32 9-4M27 49l-8-4m66 49 7 8m-64 0 7-8" stroke="#ffcc39" stroke-width="5" stroke-linecap="round"/></svg>`;
+  }
+
+  function showHome() {
+    appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); screen.className='screen menu-screen';
+    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+  }
+
+  function showTeams(nextMode) {
+    mode=nextMode; appScreen='teams'; screen.className='screen';
+    const chosen=countries[selectedCountry];
+    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge">선택한 팀 · ${chosen.flag} ${chosen.name}</p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
+  }
+
+  function chooseOpponent() {
+    const choices=countries.filter(t=>t.id!==selectedCountry);
+    return choices[Math.floor(Math.random()*choices.length)];
+  }
+
+  function makeTeam(team,side,attackDir) {
+    return formation.map(([fx,fy,speed,role],index)=>{
+      const depth=side===0?fy:105-fy;
+      const y=role==='GK'?(side===0?(attackDir<0?98:7):(attackDir<0?7:98)):depth;
+      return {x:fx,y,homeX:fx,homeY:y,speed:role==='GK'?3.6:speed,role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0};
+    });
+  }
+
+  function startMatch() {
+    const home=countries[selectedCountry], away=chooseOpponent();
+    game={home,away,mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?cupRound+2:1,
+      players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null},score:[0,0],elapsed:0,period:1,attackDir:-1,
+      controlled:6,aim:null,ended:false,paused:false,lastTouch:0};
+    resetPositions(0);cameraY=52.5;
+    appScreen='match'; screen.innerHTML=''; screen.className='screen'; hud.classList.remove('hidden'); dragHint.classList.remove('hidden');
+    updateHud(); toast(mode==='cup'?`${roundNames[cupRound]} · ${home.name} vs ${away.name}`:`${home.name} vs ${away.name}`);
+  }
+
+  function updateHud() {
+    if(!game)return;
+    $('#home-team-label').textContent=game.home.name; $('#away-team-label').textContent=game.away.name;
+    $('#home-score').textContent=game.score[0]; $('#away-score').textContent=game.score[1];
+    $('#period-label').textContent=game.period===1?'전반':'후반';
+    const elapsedInHalf=game.elapsed%75, remaining=Math.ceil(75-elapsedInHalf);
+    $('#clock').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+  }
+
+  function toast(text,duration=1700) {
+    hint.textContent=text; hint.classList.remove('hidden'); clearTimeout(messageTimer);
+    messageTimer=setTimeout(()=>hint.classList.add('hidden'),duration);
+  }
+
+  function pauseGame() {
+    if(!game||appScreen!=='match')return;
+    appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); screen.className='screen';
+    screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 임시 음색이며, 추후 제작 음원으로 교체해요.</p></div>`;
+  }
+
+  function finishMatch() {
+    if(!game)return;
+    game.ended=true; appScreen='result'; dragHint.classList.add('hidden');
+    const tied=game.score[0]===game.score[1];
+    if(game.mode==='cup'&&tied){
+      const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));
+      game.shootout=[homePens,homePens===awayPens?(awayPens===5?awayPens-1:awayPens+1):awayPens];
+    }
+    const won=game.score[0]>game.score[1]||(game.shootout&&game.shootout[0]>game.shootout[1]);
+    const champion=game.mode==='cup'&&won&&game.round===4;
+    if(game.mode==='cup'&&won&&!champion){cupRound=Math.min(4,cupRound+1);store.set('kkoma-cup-round',cupRound);}
+    if(game.mode==='cup'&&!won){cupRound=game.round;store.set('kkoma-cup-round',cupRound);}
+    const heading=game.mode==='practice'?(won?'멋진 승리야!':tied?'무승부야!':'다음엔 이길 수 있어!'):(champion?'월드컵 우승!':won?'다음 라운드 진출!':tied?'승부차기 끝에 아쉬운 패배':'다시 도전해봐!');
+    screen.className='screen';
+    screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?(champion?'🏆 우승':game.roundName+' 종료'):'연습 경기 종료'}</span><h2 class="selection-title">${heading}</h2><div class="result-score">${game.score[0]} : ${game.score[1]}</div>${game.shootout?`<p>승부차기　${game.shootout[0]} : ${game.shootout[1]}</p>`:''}<p>${game.home.flag} ${game.home.name}　vs　${game.away.flag} ${game.away.name}</p><div class="button-stack" style="margin:16px auto 0">${won&&game.mode==='cup'&&!champion?'<button class="game-button" data-action="next">다음 경기 ▶</button>':''}<button class="game-button secondary" data-action="retry">다시 경기</button><button class="game-button ghost" data-action="home">메뉴로</button></div></div>`;
+  }
+
+  function moveToward(p,x,y,dt,mult=1) {
+    const dx=x-p.x,dy=y-p.y,d=Math.hypot(dx,dy); if(d<.25)return;
+    const step=Math.min(d,p.speed*mult*dt); p.x+=dx/d*step;p.y+=dy/d*step;
+  }
+
+  function nearestPlayer(side,x,y) {
+    let best=null,bestD=Infinity;
+    for(const p of game.players) if(p.side===side){const d=Math.hypot(p.x-x,p.y-y);if(d<bestD){bestD=d;best=p;}}
+    return best;
+  }
+
+  function attackGoal(side) { return (side===0?game.attackDir:-game.attackDir)<0?0:105; }
+  function ownGoal(side) { return attackGoal(side)===0?105:0; }
+  function kick(p,dx,dy,power,shot) {
+    const length=Math.hypot(dx,dy)||1, strength=clamp(power,0,1);
+    const ball=game.ball; ball.owner=null; ball.x=p.x+dx/length*2.3; ball.y=p.y+dy/length*2.3;
+    const speed=(shot?35:25)+strength*(shot?27:14); ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
+    sfx(shot?'kick':'pass');
+  }
+
+  function resetPositions(kickoffSide=0) {
+    for(let i=0;i<game.players.length;i++){
+      const side=i<11?0:1, idx=i%11, team=side===0?game.home:game.away;
+      const clone=makeTeam(team,side,game.attackDir)[idx];Object.assign(game.players[i],clone);
+    }
+    const taker=game.players[kickoffSide===0?6:17];taker.x=0;taker.y=52.5;
+    game.ball.x=0;game.ball.y=52.5;game.ball.vx=game.ball.vy=0;game.ball.owner=taker;
+    game.controlled=6; game.aim=null;
+  }
+
+  function scoreGoal(side) {
+    game.score[side]++;updateHud();sfx('goal');
+    toast(side===0?'골! 정말 멋져!':'상대 팀이 득점했어!',2200);
+    resetPositions(side===0?1:0);
+  }
+
+  function updateMatch(dt) {
+    if(!game||game.paused||game.ended)return;
+    game.elapsed+=dt;
+    cameraY+=(game.ball.y-cameraY)*(1-Math.exp(-2.2*dt));
+    if(game.elapsed>=150){game.elapsed=150;updateHud();finishMatch();return;}
+    if(game.elapsed>=75&&game.period===1){game.period=2;game.attackDir=1;resetPositions(1);toast('후반 시작! 진영이 바뀌었어');}
+    const ball=game.ball, owner=ball.owner;
+    for(const p of game.players){
+      if(p.side===0&&pointer?.player===p){
+        moveToward(p,p.targetX,p.targetY,dt,1.7);
+        if(ball.owner===p){ball.x=p.x;ball.y=p.y-attackDirectionY(0)*1.7;}
+        continue;
+      }
+      if(p.side===0&&game.elapsed<(p.manualUntil||0)){
+        moveToward(p,p.targetX,p.targetY,dt,1.7);continue;
+      }
+      if(p.role==='GK'){
+        const gy=ownGoal(p.side), threatX=ball.x;
+        moveToward(p,clamp(threatX,-12,12),gy<20?5:gy-4,dt,.7);
+        continue;
+      }
+      if(owner===p){
+        if(p.side===1){
+          const goal=attackGoal(1),dir=Math.sign(goal-p.y),nearOwn=nearestPlayer(0,p.x,p.y);
+          const goalX=clamp(-p.x*.22,-3,3);moveToward(p,goalX,goal,dt,.62+game.difficulty*.055);
+          ball.x=p.x;ball.y=p.y;
+          if((Math.abs(p.y-goal)<20||Math.hypot(nearOwn.x-p.x,nearOwn.y-p.y)<5)&&Math.random()<dt*(.7+game.difficulty*.12))kick(p,goalX-p.x,goal-p.y,.8,true);
+          else {ball.x=p.x;ball.y=p.y;}
+          continue;
+        }
+        ball.x=p.x;ball.y=p.y-attackDirectionY(0)*1.7;
+        continue;
+      }
+      if(!owner){
+        if(p===nearestPlayer(p.side,ball.x,ball.y))moveToward(p,ball.x,ball.y,dt,1.18);
+        else moveToward(p,p.homeX,p.homeY,dt,.55);
+      }else if(owner.side!==p.side){
+        if(p===nearestPlayer(p.side,owner.x,owner.y))moveToward(p,owner.x,owner.y,dt,1.05);
+        else moveToward(p,p.homeX+(owner.x-p.homeX)*.13,p.homeY+(owner.y-p.homeY)*.13,dt,.52);
+      }else{
+        const forward=attackGoal(p.side), targetY=clamp(owner.y+(forward<owner.y?-10:10),8,97);
+        moveToward(p,owner.x+(p.index%2?7:-7),targetY,dt,.62);
+      }
+    }
+    if(!ball.owner){
+      ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+      const friction=Math.pow(.986,dt*60);ball.vx*=friction;ball.vy*=friction;
+      if(Math.hypot(ball.vx,ball.vy)<1.7)ball.vx=ball.vy=0;
+      const receiver=nearestPlayer(0,ball.x,ball.y),opponent=nearestPlayer(1,ball.x,ball.y);
+      const homeDistance=Math.hypot(receiver.x-ball.x,receiver.y-ball.y),awayDistance=Math.hypot(opponent.x-ball.x,opponent.y-ball.y);
+      if(homeDistance<2.15&&homeDistance<=awayDistance+0.5){ball.owner=receiver;game.controlled=receiver.index;ball.vx=ball.vy=0;}
+      else if(awayDistance<2.15){ball.owner=opponent;ball.vx=ball.vy=0;}
+    }
+    if(ball.y<0||ball.y>105){
+      const side=ball.y<0?0:1, goal=attackGoal(side),onGoal=Math.abs(ball.x)<9&&Math.abs(ball.y-goal)<3;
+      if(onGoal)scoreGoal(side);
+      else {ball.y=clamp(ball.y,1,104);ball.vy*=-.35;ball.vx*=.6;game.lastTouch=1-game.lastTouch;toast('공이 골라인 밖으로 나갔어');}
+    }
+    if(Math.abs(ball.x)>34){ball.x=clamp(ball.x,-33,33);ball.vx*=-.42;ball.vy*=.7;toast('터치라인에서 다시 시작해요');}
+    updateHud();
+  }
+
+  function attackDirectionY(side) { return Math.sign(attackGoal(side)-52.5); }
+  const CAMERA_SPAN=62;
+  function cameraStart() { return clamp(cameraY-CAMERA_SPAN/2,0,105-CAMERA_SPAN); }
+  function project(x,y) {
+    const top=78, bottom=size.h-4, depth=(y-cameraStart())/CAMERA_SPAN, perspective=.78+depth*.34;
+    return {x:size.w/2+x*(size.w*.46/34)*perspective,y:top+(bottom-top)*depth,scale:perspective};
+  }
+  function unproject(px,py) {
+    const depth=clamp((py-78)/(size.h-82),0,1), y=cameraStart()+depth*CAMERA_SPAN, perspective=.78+depth*.34;
+    return {x:clamp((px-size.w/2)/(size.w*.46/34*perspective),-34,34),y};
+  }
+
+  function drawField() {
+    const {w,h}=size;
+    const sky=ctx.createLinearGradient(0,0,0,h);sky.addColorStop(0,'#64d8c1');sky.addColorStop(.28,'#17866d');sky.addColorStop(.44,'#0a513f');sky.addColorStop(1,'#06402e');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#174a42';ctx.fillRect(0,62,w,Math.max(20,h*.07));
+    for(let row=0;row<3;row++){
+      ctx.fillStyle=row%2?'#276359':'#34776a';ctx.fillRect(0,63+row*8,w,6);
+      for(let x=5;x<w;x+=14){ctx.fillStyle=['#e4a548','#df644d','#e9db83'][((x+row*9)/14|0)%3];ctx.fillRect(x,65+row*8,7,4);}
+    }
+    const start=cameraStart(),end=start+CAMERA_SPAN;
+    const tl=project(-34,start),tr=project(34,start),bl=project(-34,end),br=project(34,end);
+    ctx.beginPath();ctx.moveTo(tl.x,tl.y);ctx.lineTo(tr.x,tr.y);ctx.lineTo(br.x,br.y);ctx.lineTo(bl.x,bl.y);ctx.closePath();ctx.fillStyle='#1e9d4d';ctx.fill();
+    ctx.strokeStyle='#d8f6d9';ctx.lineWidth=1.3;ctx.globalAlpha=.88;
+    const line=(coords)=>{ctx.beginPath();coords.forEach(([x,y],i)=>{const p=project(x,y);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);});ctx.stroke();};
+    line([[-34,start],[34,start],[34,end],[-34,end],[-34,start]]);
+    for(let y=Math.floor(start/10.5)*10.5,index=0;y<end;y+=10.5,index++){
+      if(index%2)continue;const a=project(-34,Math.max(start,y)),b=project(34,Math.max(start,y)),c=project(34,Math.min(end,y+10.5)),d=project(-34,Math.min(end,y+10.5));
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.closePath();ctx.fillStyle='#ffffff0b';ctx.fill();
+    }
+    if(start<=52.5&&end>=52.5)line([[-34,52.5],[34,52.5]]);
+    for(const [cx,cy,rx,ry] of [[0,52.5,10,8],[0,7,18,10],[0,98,18,10]]){
+      if(cy+ry<start||cy-ry>end)continue;
+      ctx.beginPath();for(let i=0;i<=40;i++){const a=i/40*Math.PI*2,p=project(cx+Math.cos(a)*rx,cy+Math.sin(a)*ry);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);}ctx.stroke();
+    }
+    if(start<17)line([[-19,0],[19,0],[19,16],[-19,16],[-19,0]]);
+    if(end>88)line([[-19,105],[19,105],[19,89],[-19,89],[-19,105]]);
+    if(start<4)line([[-9,0],[9,0],[9,3],[-9,3],[-9,0]]);
+    if(end>101)line([[-9,105],[9,105],[9,102],[-9,102],[-9,105]]);
+    ctx.globalAlpha=1;
+    if(start<=2)drawGoal(0);if(end>=103)drawGoal(105);
+  }
+
+  function drawGoal(y) {
+    const a=project(-9,y),b=project(9,y), depth=y<50?1:-1;
+    ctx.strokeStyle='#e8fff2';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(b.x+depth*7,b.y+depth*4);ctx.lineTo(a.x+depth*7,a.y+depth*4);ctx.closePath();ctx.stroke();
+    ctx.strokeStyle='#ffffff55';ctx.lineWidth=1;for(let i=1;i<5;i++){const x=a.x+(b.x-a.x)*i/5;ctx.beginPath();ctx.moveTo(x,a.y);ctx.lineTo(x+depth*6,a.y+depth*4);ctx.stroke();}
+  }
+
+  function drawPlayer(p) {
+    const pt=project(p.x,p.y),radius=8.5*pt.scale+(p.role==='GK'?1:0);
+    ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=p.side===0?'#d5ff45':p.color;ctx.strokeStyle='#fff';ctx.lineWidth=1.2*pt.scale;
+    ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*1.45,radius*.55);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
+    if(game&&p===game.ball.owner){ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();ctx.arc(pt.x,pt.y,radius+4,0,Math.PI*2);ctx.stroke();}
+    if(game&&p.side===0&&p.index===game.controlled){ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(pt.x,pt.y-radius-5);ctx.lineTo(pt.x-4,pt.y-radius-11);ctx.lineTo(pt.x+4,pt.y-radius-11);ctx.fill();}
+  }
+
+  function drawBall() {
+    if(!game)return;const pt=project(game.ball.x,game.ball.y),r=4*pt.scale;
+    ctx.fillStyle='#00372988';ctx.beginPath();ctx.ellipse(pt.x,pt.y+r*1.2,r*1.45,r*.6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.strokeStyle='#253b34';ctx.lineWidth=1;ctx.beginPath();ctx.arc(pt.x,pt.y-r*.5,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#26362f';ctx.beginPath();ctx.arc(pt.x,pt.y-r*.5,r*.36,0,Math.PI*2);ctx.fill();
+  }
+
+  function drawAim() {
+    if(!game?.aim)return;const a=project(game.aim.x,game.aim.y),b=project(game.aim.toX,game.aim.toY);
+    ctx.strokeStyle='#ffff9c';ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ffff9c';ctx.beginPath();ctx.arc(b.x,b.y,4,0,Math.PI*2);ctx.fill();
+  }
+
+  function draw() {
+    if(!size.w||!size.h)return;ctx.clearRect(0,0,size.w,size.h);drawField();
+    if(game){
+      const start=cameraStart(),end=start+CAMERA_SPAN;
+      const ordered=[...game.players].filter(p=>p.y>=start-3&&p.y<=end+3).sort((a,b)=>a.y-b.y);ordered.forEach(drawPlayer);drawBall();drawAim();
+    }else{
+      const preview=[...formation].map(([x,y],i)=>({x:x*.8,y:15+y*.95,side:i%2,color:'#ffb337',index:i}));preview.forEach(p=>drawPlayer(p));
+      const ball=project(0,67);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ball.x,ball.y,8,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  function frame(now) {
+    const dt=Math.min((now-lastFrame)/1000,.05)||0;lastFrame=now;updateMatch(dt);draw();requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function canvasPoint(event) { const r=canvas.getBoundingClientRect();return {x:event.clientX-r.left,y:event.clientY-r.top}; }
+  canvas.addEventListener('pointerdown',event=>{
+    if(appScreen!=='match'||!game)return;
+    event.preventDefault();canvas.setPointerCapture(event.pointerId);
+    const selected=game.ball.owner?.side===0?game.ball.owner:nearestPlayer(0,game.ball.x,game.ball.y);
+    game.controlled=selected.index;const p=canvasPoint(event),world=unproject(p.x,p.y);
+    pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:p,last:p,worldStart:world};game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y};
+    if(!muted)ensureAudio();
+  });
+  canvas.addEventListener('pointermove',event=>{
+    if(!pointer||pointer.id!==event.pointerId||!game)return;event.preventDefault();
+    const point=canvasPoint(event),current=unproject(point.x,point.y),delta={x:current.x-pointer.worldStart.x,y:current.y-pointer.worldStart.y};
+    const scale=Math.min(1,14/(Math.hypot(delta.x,delta.y)||1));
+    const p=pointer.player;p.targetX=clamp(pointer.origin.x+delta.x*scale,-33,33);p.targetY=clamp(pointer.origin.y+delta.y*scale,3,102);
+    game.aim={x:p.x,y:p.y,toX:clamp(p.x+delta.x*2,-33,33),toY:clamp(p.y+delta.y*2,0,105)};
+    pointer.last=point;
+  });
+  canvas.addEventListener('pointerup',event=>{
+    if(!pointer||pointer.id!==event.pointerId||!game)return;event.preventDefault();
+    const p=pointer.player,end=unproject(pointer.last.x,pointer.last.y),start=pointer.worldStart;
+    let dx=end.x-start.x,dy=end.y-start.y,length=Math.hypot(dx,dy);
+    if(length<2){dx=0;dy=attackGoal(p.side)-p.y;length=Math.abs(dy);}
+    const towardGoal=Math.sign(dy)===Math.sign(attackGoal(p.side)-p.y);
+    const isShot=towardGoal&&length>7;
+    if(game.ball.owner===p){kick(p,dx,dy,length/14,isShot);}
+    else {p.targetX=clamp(p.x+dx*1.3,-33,33);p.targetY=clamp(p.y+dy*1.3,1,104);p.manualUntil=game.elapsed+1.2;game.aim=null;}
+    pointer=null;game.aim=null;
+  });
+  canvas.addEventListener('pointercancel',()=>{pointer=null;if(game)game.aim=null;});
+
+  function ensureAudio() {
+    if(!audioContext){const AudioCtx=window.AudioContext||window.webkitAudioContext;if(AudioCtx)audioContext=new AudioCtx();}
+    if(audioContext?.state==='suspended')audioContext.resume();
+  }
+  function sfx(type) {
+    if(muted)return;ensureAudio();if(!audioContext)return;
+    const now=audioContext.currentTime,osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    const freq=type==='goal'?660:type==='kick'?145:220;
+    osc.type=type==='goal'?'triangle':'sine';osc.frequency.setValueAtTime(freq,now);osc.frequency.exponentialRampToValueAtTime(type==='goal'?990:70,now+(type==='goal'?.28:.09));
+    gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(type==='goal'?.09:.07,now+.012);gain.gain.exponentialRampToValueAtTime(.0001,now+(type==='goal'?.34:.12));
+    osc.connect(gain);gain.connect(audioContext.destination);osc.start(now);osc.stop(now+(type==='goal'?.36:.14));
+  }
+
+  screen.addEventListener('click',event=>{
+    const teamButton=event.target.closest('[data-team]');
+    if(teamButton){selectedCountry=Number(teamButton.dataset.team);showTeams(mode);return;}
+    const button=event.target.closest('[data-action]');if(!button)return;
+    const action=button.dataset.action;
+    if(action==='team')showTeams('practice');
+    else if(action==='cup')showTeams('cup');
+    else if(action==='home')showHome();
+    else if(action==='play')startMatch();
+    else if(action==='resume'){appScreen='match';game.paused=false;screen.innerHTML='';dragHint.classList.remove('hidden');}
+    else if(action==='mute'){muted=!muted;store.set('kkoma-muted',muted);pauseGame();}
+    else if(action==='retry')startMatch();
+    else if(action==='next'){showTeams('cup');}
+  });
+  $('#pause-button').addEventListener('click',pauseGame);
+  $('#back-button').addEventListener('click',showHome);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appScreen==='match')pauseGame();});
+
+  function initialIntro(){showHome();}
+  initialIntro();
+})();
