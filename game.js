@@ -322,8 +322,9 @@
     ball.x=p.x+dx/length*2.45; ball.y=p.y+dy/length*2.45;
     const skill=shot?(p.team?.rating?.shot||1):(p.team?.rating?.pass||1);
     const speed=((shot?35:23)+strength*(shot?28:17))*skill; ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
-    p.kickUntil=game.elapsed+.25;
-    p.shotUntil=shot?game.elapsed+.3:0;
+    p.actionStartedAt=game.elapsed;
+    p.kickUntil=game.elapsed+(shot?.36:.26);
+    p.shotUntil=shot?game.elapsed+.36:0;
     sfx(shot?'kick':'pass');
   }
 
@@ -550,7 +551,10 @@
     const hasSprite=Boolean(image);
     let spriteTop=null;
     if(hasSprite){
-      const width=radius*2.9,height=radius*3.15,bottom=pt.y+radius*1.65;
+      const duration=state==='shot'?.36:state==='kick'?.26:0;
+      const progress=duration?clamp((game.elapsed-(p.actionStartedAt??game.elapsed))/duration,0,1):0;
+      const actionScale=state==='shot'?1+.045*Math.sin(progress*Math.PI):state==='kick'?1+.025*Math.sin(progress*Math.PI):1;
+      const width=radius*2.9*actionScale,height=radius*3.15*actionScale,bottom=pt.y+radius*1.65;
       const top=bottom-height*134/136;
       spriteTop=bottom-height*132/136;
       ctx.drawImage(image,pt.x-width/2,top,width,height);
