@@ -79,7 +79,7 @@
 
   function startMatch() {
     const home=countries[selectedCountry], away=chooseOpponent();
-    game={home,away,mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?cupRound+2:1,
+    game={home,away,mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.9+cupRound*.3:.45,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
       controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0};
     resetPositions(0);cameraY=52.5;
@@ -154,32 +154,32 @@
     return risk;
   }
 
-  function passTargetFor(p,dx,dy,maxAngle=58) {
+  function passTargetFor(p,dx,dy,maxAngle=72) {
     const gesture=Math.hypot(dx,dy); if(gesture<1)return null;
     const ux=dx/gesture,uy=dy/gesture,cosLimit=Math.cos(maxAngle*Math.PI/180);
     let best=null,bestScore=-Infinity;
     for(const mate of game.players){
       if(mate.side!==p.side||mate===p)continue;
       const vx=mate.x-p.x,vy=mate.y-p.y,dist=Math.hypot(vx,vy);
-      if(dist<3||dist>44)continue;
+      if(dist<2.5||dist>50)continue;
       const alignment=(vx*ux+vy*uy)/dist;
       if(alignment<cosLimit)continue;
       const progress=(mate.y-p.y)*Math.sign(attackGoal(p.side)-p.y);
       const risk=laneRisk(p,mate);
-      const score=alignment*4+progress*.035-dist*.018-risk*1.8+(mate.role==='FW'?.18:0);
+      const score=alignment*5.2+progress*.045-dist*.014-risk*1.15+(mate.role==='FW'?.25:0);
       if(score>bestScore){bestScore=score;best=mate;}
     }
     return best;
   }
 
   function isShotGesture(p,dx,dy,length) {
-    if(length<5.2||Math.abs(dy)<.15)return false;
+    if(length<4.2||Math.abs(dy)<.12)return false;
     const goalY=attackGoal(p.side),toward=Math.sign(goalY-p.y);
     if(Math.sign(dy)!==toward)return false;
     const t=(goalY-p.y)/dy;
     if(t<=0)return false;
     const projectedX=p.x+dx*t;
-    return Math.abs(projectedX)<=14.5;
+    return Math.abs(projectedX)<=18;
   }
 
   function bestAiPass(p) {
@@ -252,13 +252,13 @@
           const distGoal=Math.abs(goal-p.y);
           const shotLaneRisk=laneRisk(p,{x:clamp(-p.x*.18,-4,4),y:goal},0);
           if(game.elapsed>=(p.nextDecisionAt||0)){
-            if(distGoal<26&&Math.abs(p.x)<24&&shotLaneRisk<.72){
-              const aimX=clamp(-p.x*.2+random(-2.2,2.2),-6.5,6.5);
-              kick(p,aimX-p.x,goal-p.y,.72+game.difficulty*.04,true);
-              p.nextDecisionAt=game.elapsed+.75;
+            if(distGoal<19&&Math.abs(p.x)<21&&shotLaneRisk<.58){
+              const aimX=clamp(-p.x*.16+random(-5.2,5.2),-8.5,8.5);
+              kick(p,aimX-p.x,goal-p.y,.56+game.difficulty*.035,true);
+              p.nextDecisionAt=game.elapsed+1.05;
               continue;
             }
-            if(pressure<5.2||shotLaneRisk>.66||Math.random()<.16){
+            if(pressure<4.3||shotLaneRisk>.74||Math.random()<.09){
               const mate=bestAiPass(p);
               if(mate){
                 const leadY=mate.y+Math.sign(goal-mate.y)*2;
@@ -268,11 +268,11 @@
                 continue;
               }
             }
-            p.nextDecisionAt=game.elapsed+random(.32,.62);
+            p.nextDecisionAt=game.elapsed+random(.52,.92);
           }
           let goalX=clamp(-p.x*.18,-4,4);
           if(pressure<7&&nearestHome)goalX=clamp(p.x+(p.x-nearestHome.x)*.7,-22,22);
-          moveToward(p,goalX,goal,dt,.66+game.difficulty*.05);
+          moveToward(p,goalX,goal,dt,.52+game.difficulty*.035);
           ball.x=p.x;ball.y=p.y;
           continue;
         }
@@ -285,11 +285,11 @@
         else moveToward(p,p.homeX,p.homeY,dt,.58);
       }else if(owner.side!==p.side){
         const chasers=nearestPlayers(p.side,owner.x,owner.y,2);
-        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,1.1);
+        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.82:1.08);
         else if(p===chasers[1]){
           const coverY=clamp(owner.y+Math.sign(attackGoal(owner.side)-owner.y)*7,4,101);
-          moveToward(p,owner.x,coverY,dt,.88);
-        }else moveToward(p,p.homeX+(owner.x-p.homeX)*.22,p.homeY+(owner.y-p.homeY)*.2,dt,.58);
+          moveToward(p,owner.x,coverY,dt,p.side===1?.62:.86);
+        }else moveToward(p,p.homeX+(owner.x-p.homeX)*.22,p.homeY+(owner.y-p.homeY)*.2,dt,p.side===1?.5:.58);
       }else{
         const forward=attackGoal(p.side),dir=Math.sign(forward-owner.y);
         const targetY=clamp(owner.y+dir*(p.role==='FW'?13:9),8,97);
@@ -302,8 +302,8 @@
       const carrier=ball.owner,defender=nearestPlayer(1-carrier.side,carrier.x,carrier.y);
       if(defender&&game.elapsed>=(game.nextTackleAt||0)){
         const d=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
-        if(d<1.62&&Math.random()<dt*(carrier.side===0?1.05:.78)){
-          ball.owner=defender;ball.vx=ball.vy=0;game.lastTouch=defender.side;game.nextTackleAt=game.elapsed+.75;
+        if(d<1.55&&Math.random()<dt*(carrier.side===0?.42:.82)){
+          ball.owner=defender;ball.vx=ball.vy=0;game.lastTouch=defender.side;game.nextTackleAt=game.elapsed+(carrier.side===0?1.15:.72);
           if(defender.side===0){game.controlled=defender.index;toast('공을 빼앗았어!',900);}
         }
       }
@@ -450,15 +450,15 @@
   }
 
   function resolveGesture(p,dx,dy,length) {
-    if(length<1.15)return {kind:'hold',dx:0,dy:0,power:0,target:null};
+    if(length<1.35)return {kind:'hold',dx:0,dy:0,power:0,target:null};
     if(isShotGesture(p,dx,dy,length))return {kind:'shot',dx,dy,power:clamp(length/13,.42,1),target:null};
     const target=passTargetFor(p,dx,dy);
     if(target){
       const leadY=clamp(target.y+Math.sign(attackGoal(p.side)-target.y)*1.8,1,104);
       const pdx=target.x-p.x,pdy=leadY-p.y,dist=Math.hypot(pdx,pdy);
-      return {kind:'pass',dx:pdx,dy:pdy,power:clamp(.28+dist/42,.32,.92),target};
+      return {kind:'pass',dx:pdx,dy:pdy,power:clamp(.34+dist/46,.38,.94),target};
     }
-    return {kind:'pass',dx,dy,power:clamp(.24+length/17,.3,.9),target:null};
+    return {kind:'pass',dx,dy,power:clamp(.3+length/18,.36,.9),target:null};
   }
 
   function clearPointer() {
