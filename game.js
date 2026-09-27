@@ -1,6 +1,23 @@
 (() => {
   'use strict';
 
+  const TEAM_PROFILES = {
+    '아르헨티나': {rating:{speed:1.01,pass:1.06,shot:1.06},kit:{primary:'#8ecdf4',secondary:'#ffffff',shorts:'#111111',socks:'#ffffff',trim:'#ffffff',gkPrimary:'#52c46b'}},
+    '브라질': {rating:{speed:1.06,pass:1.03,shot:1.05},kit:{primary:'#f7d927',secondary:'#1e8f4d',shorts:'#2457a6',socks:'#ffffff',trim:'#1e8f4d',gkPrimary:'#5b5b5b'}},
+    '프랑스': {rating:{speed:1.04,pass:1.03,shot:1.05},kit:{primary:'#244ea8',secondary:'#ffffff',shorts:'#183a7b',socks:'#d93a47',trim:'#ffffff',gkPrimary:'#f0a536'}},
+    '독일': {rating:{speed:.99,pass:1.05,shot:1.03},kit:{primary:'#f4f4f4',secondary:'#171717',shorts:'#171717',socks:'#f4f4f4',trim:'#d7b445',gkPrimary:'#49a061'}},
+    '스페인': {rating:{speed:.99,pass:1.06,shot:1.03},kit:{primary:'#c92d35',secondary:'#f0c83f',shorts:'#243a74',socks:'#c92d35',trim:'#f0c83f',gkPrimary:'#72a94c'}},
+    '포르투갈': {rating:{speed:1.03,pass:1.02,shot:1.06},kit:{primary:'#b61f33',secondary:'#236c43',shorts:'#2f6245',socks:'#b61f33',trim:'#e6c84c',gkPrimary:'#d7d7d7'}},
+    '대한민국': {rating:{speed:1.03,pass:1.01,shot:1.00},kit:{primary:'#e7263f',secondary:'#111111',shorts:'#e7263f',socks:'#e7263f',trim:'#ffffff',gkPrimary:'#f2c534'}},
+    '일본': {rating:{speed:1.02,pass:1.03,shot:.99},kit:{primary:'#2450a4',secondary:'#ffffff',shorts:'#173a7c',socks:'#2450a4',trim:'#ffffff',gkPrimary:'#f2c534'}},
+    '잉글랜드': {rating:{speed:1.00,pass:1.02,shot:1.04},kit:{primary:'#f5f5f5',secondary:'#233b70',shorts:'#233b70',socks:'#f5f5f5',trim:'#d94752',gkPrimary:'#5a8f5a'}},
+    '크로아티아': {rating:{speed:.99,pass:1.04,shot:1.02},kit:{primary:'#f5f5f5',secondary:'#d8464b',shorts:'#28519a',socks:'#ffffff',trim:'#d8464b',gkPrimary:'#5a8f5a'}},
+    '네덜란드': {rating:{speed:1.02,pass:1.02,shot:1.03},kit:{primary:'#ef7a26',secondary:'#111111',shorts:'#ef7a26',socks:'#ef7a26',trim:'#111111',gkPrimary:'#58a764'}},
+    '우루과이': {rating:{speed:1.00,pass:1.03,shot:1.03},kit:{primary:'#79c5ed',secondary:'#111111',shorts:'#111111',socks:'#79c5ed',trim:'#ffffff',gkPrimary:'#e8c640'}},
+    '벨기에': {rating:{speed:1.02,pass:1.02,shot:1.03},kit:{primary:'#d73c43',secondary:'#111111',shorts:'#111111',socks:'#d73c43',trim:'#e8c43b',gkPrimary:'#5a8f5a'}},
+    '이탈리아': {rating:{speed:1.00,pass:1.04,shot:1.01},kit:{primary:'#2f69bd',secondary:'#ffffff',shorts:'#ffffff',socks:'#2f69bd',trim:'#ffffff',gkPrimary:'#5a8f5a'}}
+  };
+
   const countries = [
     ['🇦🇷','아르헨티나','#62b4ff'],['🇧🇷','브라질','#f5cf35'],['🇫🇷','프랑스','#2261d6'],['🇩🇪','독일','#e4b441'],
     ['🇪🇸','스페인','#df3434'],['🇵🇹','포르투갈','#16874b'],['🇰🇷','대한민국','#ffffff'],['🇯🇵','일본','#e9424d'],
@@ -14,7 +31,21 @@
     ['🇨🇷','코스타리카','#e64b51'],['🇪🇨','에콰도르','#e2be34'],['🇵🇾','파라과이','#e34f56'],['🇻🇪','베네수엘라','#e9be37'],
     ['🇷🇸','세르비아','#de4a51'],['🇺🇦','우크라이나','#e5c943'],['🇬🇷','그리스','#397dcc'],['🇦🇹','오스트리아','#df4e52'],
     ['🇨🇿','체코','#df5053'],['🇸🇮','슬로베니아','#3980c8'],['🇯🇲','자메이카','#42a366'],['🇮🇸','아이슬란드','#4b82d5']
-  ].map(([flag,name,color],id)=>({id,flag,name,color}));
+  ].map(([flag,name,color],id)=>{
+    const profile=TEAM_PROFILES[name]||{};
+    return {
+      id,flag,name,color,
+      rating:{speed:1,pass:1,shot:1,...profile.rating},
+      kit:{
+        primary:profile.kit?.primary||color,
+        secondary:profile.kit?.secondary||'#ffffff',
+        shorts:profile.kit?.shorts||'#17352f',
+        socks:profile.kit?.socks||profile.kit?.primary||color,
+        trim:profile.kit?.trim||'#ffffff',
+        gkPrimary:profile.kit?.gkPrimary||'#f4c542'
+      }
+    };
+  });
 
   const canvas = document.querySelector('#pitch');
   const ctx = canvas.getContext('2d');
@@ -59,7 +90,7 @@
   function showTeams(nextMode) {
     mode=nextMode; appScreen='teams'; screen.className='screen';
     const chosen=countries[selectedCountry];
-    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge">선택한 팀 · ${chosen.flag} ${chosen.name}</p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
+    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge">선택한 팀 · ${chosen.flag} ${chosen.name} · 속도 ${Math.round(chosen.rating.speed*100)} · 패스 ${Math.round(chosen.rating.pass*100)} · 슛 ${Math.round(chosen.rating.shot*100)}</p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
   }
 
   function chooseOpponent() {
@@ -73,7 +104,7 @@
     return formation.map(([fx,fy,speed,role],index)=>{
       const baseDepth=role==='GK'?5:fy;
       const y=defendingEnd===0?baseDepth:105-baseDepth;
-      return {x:fx,y,homeX:fx,homeY:y,speed:role==='GK'?3.6:speed,role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0};
+      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed,role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0};
     });
   }
 
@@ -166,7 +197,8 @@
       if(alignment<cosLimit)continue;
       const progress=(mate.y-p.y)*Math.sign(attackGoal(p.side)-p.y);
       const risk=laneRisk(p,mate);
-      const score=alignment*5.2+progress*.045-dist*.014-risk*1.15+(mate.role==='FW'?.25:0);
+      const teamPass=p.team?.rating?.pass||1;
+      const score=alignment*(5.2*teamPass)+progress*.045-dist*.014-risk*(1.15/teamPass)+(mate.role==='FW'?.25:0);
       if(score>bestScore){bestScore=score;best=mate;}
     }
     return best;
@@ -201,7 +233,8 @@
     const length=Math.hypot(dx,dy)||1, strength=clamp(power,0,1);
     const ball=game.ball; ball.owner=null; ball.lastKicker=p; ball.kickLockUntil=game.elapsed+.16;
     ball.x=p.x+dx/length*2.45; ball.y=p.y+dy/length*2.45;
-    const speed=(shot?35:23)+strength*(shot?28:17); ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
+    const skill=shot?(p.team?.rating?.shot||1):(p.team?.rating?.pass||1);
+    const speed=((shot?35:23)+strength*(shot?28:17))*skill; ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
     sfx(shot?'kick':'pass');
   }
 
@@ -397,11 +430,31 @@
 
   function drawPlayer(p) {
     const pt=project(p.x,p.y),radius=8.5*pt.scale+(p.role==='GK'?1:0);
+    const kit=p.team?.kit||{primary:p.color||'#d5ff45',secondary:'#ffffff',shorts:'#17352f',socks:p.color||'#d5ff45',trim:'#ffffff',gkPrimary:'#f4c542'};
+    const shirt=p.role==='GK'?kit.gkPrimary:kit.primary;
     ctx.fillStyle='#002b1f75';ctx.beginPath();ctx.ellipse(pt.x,pt.y+radius*.85,radius*1.25,radius*.45,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle=p.side===0?'#d5ff45':p.color;ctx.strokeStyle='#fff';ctx.lineWidth=1.2*pt.scale;
-    ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*1.45,radius*.55);ctx.fill();ctx.stroke();
+
+    // shirt
+    ctx.fillStyle=shirt;ctx.strokeStyle=kit.trim||'#fff';ctx.lineWidth=1.2*pt.scale;
+    ctx.beginPath();ctx.roundRect(pt.x-radius*.7,pt.y-radius*.15,radius*1.4,radius*.92,radius*.42);ctx.fill();ctx.stroke();
+
+    // simple national-kit accent
+    ctx.fillStyle=kit.secondary;ctx.globalAlpha=.9;
+    ctx.fillRect(pt.x-radius*.08,pt.y-radius*.1,radius*.16,radius*.72);
+    ctx.globalAlpha=1;
+
+    // shorts
+    ctx.fillStyle=kit.shorts;ctx.beginPath();ctx.roundRect(pt.x-radius*.62,pt.y+radius*.58,radius*1.24,radius*.48,radius*.18);ctx.fill();
+
+    // socks/legs
+    ctx.strokeStyle=kit.socks;ctx.lineWidth=2.1*pt.scale;
+    ctx.beginPath();ctx.moveTo(pt.x-radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x-radius*.3,pt.y+radius*1.28);
+    ctx.moveTo(pt.x+radius*.28,pt.y+radius*.95);ctx.lineTo(pt.x+radius*.3,pt.y+radius*1.28);ctx.stroke();
+
+    // head
     ctx.fillStyle='#ffd7a4';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.5,radius*.53,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#234839';ctx.beginPath();ctx.arc(pt.x,pt.y-radius*.63,radius*.55,Math.PI,Math.PI*2);ctx.fill();
+
     if(game&&p===game.ball.owner){ctx.strokeStyle='#ffec63';ctx.lineWidth=2;ctx.beginPath();ctx.arc(pt.x,pt.y,radius+4,0,Math.PI*2);ctx.stroke();}
     if(game&&p.side===0&&p.index===game.controlled){ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(pt.x,pt.y-radius-5);ctx.lineTo(pt.x-4,pt.y-radius-11);ctx.lineTo(pt.x+4,pt.y-radius-11);ctx.fill();}
   }
@@ -414,9 +467,23 @@
   }
 
   function drawAim() {
-    if(!game?.aim)return;const a=project(game.aim.x,game.aim.y),b=project(game.aim.toX,game.aim.toY);
+    if(!game?.aim)return;
+    const a=project(game.aim.x,game.aim.y),b=project(game.aim.toX,game.aim.toY);
     const color=game.aim.kind==='shot'?'#ffcf59':game.aim.kind==='pass'?'#a9f7ff':'#ffff9c';
-    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+
+    // white line = actual finger drag position
+    if(Number.isFinite(game.aim.rawScreenX)&&Number.isFinite(game.aim.rawScreenY)){
+      ctx.save();
+      ctx.strokeStyle='#ffffffb8';ctx.lineWidth=2;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(game.aim.rawScreenX,game.aim.rawScreenY);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ffffffde';ctx.beginPath();ctx.arc(game.aim.rawScreenX,game.aim.rawScreenY,5,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#123e36';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(game.aim.rawScreenX,game.aim.rawScreenY,8,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    }
+
+    // colored line = interpreted pass/shot direction
+    ctx.strokeStyle=color;ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle=color;ctx.beginPath();ctx.arc(b.x,b.y,game.aim.kind==='pass'?6:4,0,Math.PI*2);ctx.fill();
     if(game.aim.target){
       const t=project(game.aim.target.x,game.aim.target.y);ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(t.x,t.y,11*t.scale,0,Math.PI*2);ctx.stroke();
@@ -473,7 +540,7 @@
     if(!selected)return;
     game.controlled=selected.index;
     pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:startPoint,last:startPoint,worldStart:world};
-    game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,kind:'move',target:null};
+    game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,rawScreenX:startPoint.x,rawScreenY:startPoint.y,kind:'move',target:null};
     if(!muted)ensureAudio();
   });
 
@@ -485,7 +552,7 @@
     const intent=game.ball.owner===p?resolveGesture(p,delta.x,delta.y,dragLength):{kind:'move',target:null};
     const aimDx=intent.kind==='pass'&&intent.target?intent.dx:delta.x*2;
     const aimDy=intent.kind==='pass'&&intent.target?intent.dy:delta.y*2;
-    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,-33,33),toY:clamp(p.y+aimDy,0,105),kind:intent.kind,target:intent.target||null};
+    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,-33,33),toY:clamp(p.y+aimDy,0,105),rawScreenX:point.x,rawScreenY:point.y,kind:intent.kind,target:intent.target||null};
     pointer.last=point;
   });
 
