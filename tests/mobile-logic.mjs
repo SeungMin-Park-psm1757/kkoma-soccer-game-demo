@@ -3,24 +3,25 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const listeners={canvas:{},document:{},screen:{}};
-const element=()=>({classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:''});
+const element=()=>{const classes=new Set();return {classList:{add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name)},
+  addEventListener(){},getBoundingClientRect(){return {top:0,bottom:62,left:0,right:0,width:0,height:62};},innerHTML:'',textContent:''};};
 const drawImages=[];
 const ctx=new Proxy({setTransform(){},drawImage(...args){drawImages.push(args);}},
   {get(target,key){return key in target?target[key]:()=>{};}});
 const canvas={...element(),getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:390,height:844}),
   setPointerCapture(){},addEventListener(type,fn){listeners.canvas[type]=fn;}};
 const screen={...element(),addEventListener(type,fn){listeners.screen[type]=fn;}};
-const elements=new Map([['#pitch',canvas],['#screen',screen]]);
+const elements=new Map([['#pitch',canvas],['#screen',screen],['#hud',element()],['#hint',element()],['#drag-hint',element()]]);
 const document={hidden:false,querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector);},
   addEventListener(type,fn){listeners.document[type]=fn;}};
 const storage=new Map([['kkoma-cup-round','2'],['kkoma-muted','true']]);
 const spriteManifest=JSON.parse(readFileSync(new URL('../assets/players/manifest.json',import.meta.url),'utf8'));
 class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src='';}}
-const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObserver:class{observe(){}},
+const context={document,window:{},Image:ImageStub,getComputedStyle:()=>({getPropertyValue:()=> '0px'}),devicePixelRatio:1,ResizeObserver:class{observe(){}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,game:()=>game,setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,unproject,startMatch,updateMatch,drawPlayer,playerSprites,resolveTackleGesture,reviewControlledDefender,nearestPlayers,nearestFieldPlayer,beginTackle,attackGoal,ownGoal,pointer:()=>pointer,game:()=>game,setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -203,4 +204,122 @@ advance(.4);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'shot returns to run');
 
-console.log('PASS: mobile logic, Korea idle/run/pass/shot sprite mapping, action transitions, and unavailable-image fallback');
+// Holding a movement drag keeps advancing toward a moving target until field bounds.
+{
+  const {game,p}=setup(0,60,8,57),start=t.project(p.x,p.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x,start.y+50,begin+400));
+  assert.equal(game.aim.kind,'move','slow drag remains movement');
+  advance(4);
+  assert.ok(p.y>74,'held drag continues beyond the former 14-unit limit');
+  assert.ok(p.y<=103,'carrier and attached ball stay inside the goal line');
+  assert.ok(game.players.every(player=>player.x>=-33&&player.x<=33&&player.y>=1&&player.y<=104),'players stay inside the field bounds');
+  const heldY=p.y;
+  listeners.canvas.pointerup(event(start.x,start.y+50,begin+401));
+  advance(.5);
+  assert.ok(Math.abs(p.y-heldY)<.3,'attack movement stops when the finger lifts');
+  assert.ok(game.ball.y<=105,'attached ball does not cross the own goal line');
+}
+
+// Movement follows the unobstructed component along field edges.
+{
+  const {game,p}=setup(0,60,8,57),start=t.project(p.x,p.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+70,start.y+50,begin+500));
+  advance(3);
+  assert.ok(p.x<=33&&p.x>0,'horizontal movement respects the sideline');
+  assert.ok(p.y>70,'open diagonal component keeps moving beside the sideline');
+  listeners.canvas.pointerup(event(start.x+70,start.y+50,begin+501));
+  stamp+=1000;
+}
+
+function setupDefense(gap=2.8){
+  t.startMatch();const game=t.game(),defender=game.players[6],carrier=game.players[17];
+  for(const p of game.players){p.x=p.side===0?28:-28;p.y=p.side===0?90:10;p.homeX=p.x;p.homeY=p.y;p.nextDecisionAt=1000;}
+  defender.x=0;defender.y=50;defender.homeX=0;defender.homeY=50;
+  carrier.x=gap;carrier.y=50;carrier.homeX=gap;carrier.homeY=50;
+  const awayKeeper=game.players[11];awayKeeper.x=gap+.1;awayKeeper.y=50;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.ball.vx=game.ball.vy=0;
+  game.controlled=defender.index;game.nextTackleAt=1000;game.defenseReviewAt=1000;t.setCamera(50);
+  return {game,defender,carrier};
+}
+
+// Defense stays on field players even when the goalkeeper is closer to the carrier.
+{
+  const {game,carrier}=setupDefense();
+  assert.notEqual(t.nearestPlayers(0,carrier.x,carrier.y)[0].role,'GK','goalkeeper is excluded from press roles');
+  t.reviewControlledDefender(carrier);
+  assert.notEqual(game.players[game.controlled].role,'GK','automatic selection never chooses goalkeeper');
+}
+
+// A direction-correct defensive swipe previews and starts one manual tackle.
+{
+  const {game,defender,carrier}=setupDefense();
+  const start=t.project(defender.x,defender.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+35,start.y,begin+60));
+  assert.equal(game.aim.kind,'tackle','valid defensive swipe shows tackle preview');
+  assert.equal(game.aim.target,carrier,'tackle preview locks onto the current carrier');
+  listeners.canvas.pointerup(event(start.x+35,start.y,begin+61));
+  assert.ok(game.tackle,'release starts tackle dash');
+  for(let n=0;n<30;n++)t.updateMatch(1/120);
+  assert.equal(game.ball.owner,defender,'tackle reaches the ball and transfers possession');
+  assert.equal(game.tackle,null,'successful tackle ends dash');
+  assert.equal(t.beginTackle(defender,carrier),false,'cooldown prevents an immediate second tackle');
+  stamp+=1000;
+}
+
+for(let n=0;n<20;n++){
+  const {game,defender,carrier}=setupDefense(2.8);
+  assert.equal(t.beginTackle(defender,carrier),true,`tackle starts ${n}`);
+  for(let step=0;step<18;step++)t.updateMatch(1/60);
+  assert.equal(game.ball.owner,defender,`tackle contact succeeds ${n}`);
+}
+for(const fps of [30,60,120]){
+  const {game,defender,carrier}=setupDefense(2.8);
+  assert.equal(t.beginTackle(defender,carrier),true,`tackle starts at ${fps}fps`);
+  for(let step=0;step<Math.ceil(.3*fps);step++)t.updateMatch(1/fps);
+  assert.equal(game.ball.owner,defender,`same tackle succeeds at ${fps}fps`);
+  stamp+=1000;
+}
+
+// Distance and cooldown rules make a bad tackle miss without changing possession.
+{
+  const {game,defender,carrier}=setupDefense(5.4);
+  assert.equal(t.beginTackle(defender,carrier),true,'outer reach can start a tackle');
+  for(let n=0;n<30;n++)t.updateMatch(1/120);
+  assert.equal(game.ball.owner,carrier,'out-of-reach dash does not steal the ball');
+  assert.equal(game.tackle,null,'miss ends after the lunge');
+  assert.equal(t.beginTackle(defender,carrier),false,'miss recovery blocks another tackle');
+}
+
+// Tap-to-select locks a nearby field defender briefly; cancel never tackles.
+{
+  const {game,defender,carrier}=setupDefense();
+  const chosen=game.players[7];chosen.x=4;chosen.y=50;
+  const spot=t.project(chosen.x,chosen.y),begin=stamp;
+  listeners.canvas.pointerdown(event(spot.x,spot.y,begin));
+  listeners.canvas.pointerup(event(spot.x,spot.y,begin+10));
+  assert.equal(game.controlled,chosen.index,'short tap selects the touched defender');
+  assert.ok(chosen.userSelectUntil>game.elapsed,'manual defender selection is held briefly');
+  const start=t.project(defender.x,defender.y),cancelAt=begin+100;
+  listeners.canvas.pointerdown(event(start.x,start.y,cancelAt));
+  listeners.canvas.pointermove(event(start.x+35,start.y,cancelAt+60));
+  listeners.canvas.pointercancel(event(start.x+35,start.y,cancelAt+61));
+  assert.equal(game.tackle,null,'pointercancel cancels tackle');
+  assert.equal(game.ball.owner,carrier,'cancelled tackle preserves possession');
+  stamp+=1000;
+}
+
+// Goal direction is derived from the same attackGoal used by scoring.
+{
+  const {game}=setup(0,50,6,48);
+  assert.equal(t.attackGoal(0),0,'first half attacks toward the north goal');
+  assert.equal(t.ownGoal(0),105,'first half defends the south goal');
+  game.elapsed=74.99;t.updateMatch(.02);
+  assert.equal(game.period,2,'second half starts at halftime');
+  assert.equal(t.attackGoal(0),105,'second half arrow follows the reversed attack goal');
+  assert.equal(t.ownGoal(0),0,'second half defense arrow follows our goal');
+}
+
+console.log('PASS: attack regression, sustained mobile drag, tackle success/miss/cooldown/cancel, defender selection, halftime direction, and sprite fallback');
