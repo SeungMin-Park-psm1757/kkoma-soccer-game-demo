@@ -20,7 +20,7 @@ const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObser
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,game:()=>game,setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,tryManualTackle,game:()=>game,setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -150,6 +150,14 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   document.hidden=false;
   listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
   assert.equal(t.game().paused,false,'resume after tab switch');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=0;defender.y=55;carrier.x=2.5;carrier.y=55;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  assert.equal(t.tryManualTackle(),true,'manual tackle succeeds in kid-friendly radius');
+  assert.equal(game.ball.owner,defender,'manual tackle gives possession to nearest home defender');
 }
 assert.equal(storage.get('kkoma-cup-round'),'2','cup progress preserved');
 await new Promise(resolve=>setTimeout(resolve,0));

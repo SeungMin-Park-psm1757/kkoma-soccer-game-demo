@@ -107,6 +107,7 @@
   const hud = document.querySelector('#hud');
   const hint = document.querySelector('#hint');
   const dragHint = document.querySelector('#drag-hint');
+  const tackleButton = document.querySelector('#tackle-button');
   const $ = (selector) => document.querySelector(selector);
   const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
   const random = (min,max) => min + Math.random() * (max-min);
@@ -148,6 +149,7 @@
   }
 
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
+  let tutorialSeen=Boolean(store.get('kkoma-tutorial-done',false));
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
   let pointer=null, messageTimer=0;
 
@@ -164,8 +166,23 @@
   }
 
   function showHome() {
-    appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); screen.className='screen menu-screen';
-    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+    appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen menu-screen';
+    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="tutorial">🎓 ${tutorialSeen?'조작법 다시 보기':'처음 하는 법'}</button><button class="game-button ghost" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+  }
+
+  const tutorialPages=[
+    {icon:'👆',title:'천천히 끌면 달려요',body:'선수 근처에서 손가락을 천천히 끌어 보세요. 손가락을 따라 움직이면서 공도 같이 몰고 가요.'},
+    {icon:'🤝',title:'빠르게 밀면 패스!',body:'공을 가진 상태에서 동료 쪽으로 짧고 빠르게 밀어요. 청록색 선과 동료의 링이 보이면 패스 준비 완료!'},
+    {icon:'🥅',title:'골대 쪽으로 길게 슛!',body:'상대 골대 방향으로 길고 빠르게 밀어요. 주황색 선이 골문까지 이어지면 손을 떼서 슛해요.'},
+    {icon:'🛡️',title:'공을 뺏을 땐 태클!',body:'상대가 공을 가지면 오른쪽 아래 태클 버튼을 눌러요. 가까운 우리 선수가 달려가서 공을 빼앗아요.'}
+  ];
+
+  function showTutorial(step=0) {
+    const index=clamp(Number(step)||0,0,tutorialPages.length-1),page=tutorialPages[index];
+    appScreen='tutorial'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
+    screen.className='screen menu-screen';
+    const dots=tutorialPages.map((_,i)=>i===index?'●':'○').join('');
+    screen.innerHTML=`<div class="panel tutorial-card"><p class="tutorial-step">조작 연습 ${index+1} / ${tutorialPages.length}</p><div class="tutorial-emoji">${page.icon}</div><h2 class="selection-title">${page.title}</h2><p class="tutorial-body">${page.body}</p><div class="tutorial-dots">${dots}</div><div class="button-stack" style="margin:auto">${index<tutorialPages.length-1?`<button class="game-button" data-action="tutorial-next" data-step="${index+1}">다음 ▶</button>`:'<button class="game-button" data-action="tutorial-finish">이제 경기해 볼래!</button>'}${index>0?`<button class="game-button ghost" data-action="tutorial-prev" data-step="${index-1}">◀ 이전</button>`:''}<button class="game-button ghost" data-action="tutorial-skip">건너뛰기</button></div></div>`;
   }
 
   function skillDots(value) {
@@ -174,7 +191,7 @@
   }
 
   function showTeams(nextMode) {
-    mode=nextMode; appScreen='teams'; screen.className='screen';
+    mode=nextMode; appScreen='teams'; tackleButton.classList.add('hidden'); screen.className='screen';
     const chosen=countries[selectedCountry];
     screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
   }
@@ -196,11 +213,11 @@
 
   function startMatch() {
     const home=countries[selectedCountry], away=chooseOpponent();
-    game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.9+cupRound*.3:.45,
+    game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
-      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0};
+      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0};
     resetPositions(0);cameraY=52.5;
-    appScreen='match'; screen.innerHTML=''; screen.className='screen'; hud.classList.remove('hidden'); dragHint.classList.remove('hidden');
+    appScreen='match'; screen.innerHTML=''; screen.className='screen'; hud.classList.remove('hidden'); dragHint.classList.remove('hidden'); tackleButton.classList.remove('hidden');
     updateHud(); toast(mode==='cup'?`${roundNames[cupRound]} · ${home.name} vs ${away.name}`:`${home.name} vs ${away.name}`);
   }
 
@@ -220,13 +237,13 @@
 
   function pauseGame() {
     if(!game||appScreen!=='match')return;
-    appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); screen.className='screen';
+    appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen';
     screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 임시 음색이며, 추후 제작 음원으로 교체해요.</p></div>`;
   }
 
   function finishMatch() {
     if(!game)return;
-    game.ended=true; appScreen='result'; dragHint.classList.add('hidden');
+    game.ended=true; appScreen='result'; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
     if(game.mode==='cup'&&tied){
       const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));
@@ -272,7 +289,7 @@
     return risk;
   }
 
-  function passTargetFor(p,dx,dy,maxAngle=72) {
+  function passTargetFor(p,dx,dy,maxAngle=82) {
     const gesture=Math.hypot(dx,dy); if(gesture<1)return null;
     const ux=dx/gesture,uy=dy/gesture,cosLimit=Math.cos(maxAngle*Math.PI/180);
     let best=null,bestScore=-Infinity;
@@ -292,7 +309,7 @@
   }
 
   function isShotGesture(p,dx,dy,length) {
-    if(length<4.2||Math.abs(dy)<.12)return false;
+    if(length<3.4||Math.abs(dy)<.1)return false;
     const goalY=attackGoal(p.side),toward=Math.sign(goalY-p.y);
     if(Math.sign(dy)!==toward)return false;
     const t=(goalY-p.y)/dy;
@@ -395,7 +412,7 @@
           }
           let goalX=clamp(-p.x*.18,-4,4);
           if(pressure<7&&nearestHome)goalX=clamp(p.x+(p.x-nearestHome.x)*.7,-22,22);
-          moveToward(p,goalX,goal,dt,.52+game.difficulty*.035);
+          moveToward(p,goalX,goal,dt,.47+game.difficulty*.03);
           ball.x=p.x;ball.y=p.y;
           continue;
         }
@@ -408,7 +425,7 @@
         else moveToward(p,p.homeX,p.homeY,dt,.58);
       }else if(owner.side!==p.side){
         const chasers=nearestPlayers(p.side,owner.x,owner.y,2);
-        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.82:1.08);
+        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.72:1.12);
         else if(p===chasers[1]){
           const coverY=clamp(owner.y+Math.sign(attackGoal(owner.side)-owner.y)*7,4,101);
           moveToward(p,owner.x,coverY,dt,p.side===1?.62:.86);
@@ -421,12 +438,20 @@
       }
     }
 
+    if(ball.owner?.side===1){
+      const charging=game.players.find(p=>p.side===0&&game.elapsed<(p.tackleUntil||0));
+      if(charging){
+        charging.targetX=ball.owner.x;charging.targetY=ball.owner.y;
+        if(Math.hypot(charging.x-ball.owner.x,charging.y-ball.owner.y)<2.8)completeManualTackle(charging);
+      }
+    }
+
     if(ball.owner){
       const carrier=ball.owner,defender=nearestPlayer(1-carrier.side,carrier.x,carrier.y);
       if(defender&&game.elapsed>=(game.nextTackleAt||0)){
         const d=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
-        if(d<1.55&&Math.random()<dt*(carrier.side===0?.42:.82)){
-          ball.owner=defender;ball.vx=ball.vy=0;game.lastTouch=defender.side;game.nextTackleAt=game.elapsed+(carrier.side===0?1.15:.72);
+        if(d<1.6&&Math.random()<dt*(carrier.side===0?.26:.7)){
+          ball.owner=defender;ball.vx=ball.vy=0;game.lastTouch=defender.side;game.nextTackleAt=game.elapsed+(carrier.side===0?1.45:.68);
           if(defender.side===0){game.controlled=defender.index;toast('공을 빼앗았어!',900);}
         }
       }
@@ -467,6 +492,31 @@
       ball.x=clamp(ball.x,-33,33);ball.vx*=-.38;ball.vy*=.72;toast('터치라인에서 다시 시작해요',850);
     }
     updateHud();
+  }
+
+
+  function completeManualTackle(defender) {
+    const carrier=game?.ball?.owner;
+    if(!carrier||carrier.side!==1)return false;
+    game.ball.owner=defender;game.ball.vx=game.ball.vy=0;game.ball.lastKicker=null;game.lastTouch=0;
+    game.controlled=defender.index;game.nextTackleAt=game.elapsed+.7;game.manualTackleReadyAt=game.elapsed+.75;
+    defender.tackleUntil=0;defender.targetX=defender.x;defender.targetY=defender.y;
+    toast('태클 성공! 공을 빼앗았어!',950);sfx('pass');return true;
+  }
+
+  function tryManualTackle() {
+    if(!game||appScreen!=='match'||game.paused||game.ended)return false;
+    if(game.elapsed<(game.manualTackleReadyAt||0)){toast('조금만 기다렸다 다시 태클!',650);return false;}
+    const carrier=game.ball.owner;
+    if(!carrier||carrier.side!==1){toast('상대가 공을 가졌을 때 태클!',850);return false;}
+    const defender=nearestPlayer(0,carrier.x,carrier.y);
+    if(!defender)return false;
+    game.controlled=defender.index;
+    defender.targetX=carrier.x;defender.targetY=carrier.y;defender.manualUntil=game.elapsed+.75;defender.tackleUntil=game.elapsed+.75;
+    const distance=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
+    game.manualTackleReadyAt=game.elapsed+.35;
+    if(distance<=5.2)return completeManualTackle(defender);
+    toast('가까운 선수가 공으로 달려가요!',800);return false;
   }
 
   function attackDirectionY(side) { return Math.sign(attackGoal(side)-52.5); }
@@ -667,8 +717,8 @@
 
   function resolveGesture(p,{dx,dy,distance,speed}) {
     const length=Math.hypot(dx,dy);
-    if(distance<.035||speed<.55)return {kind:'move',dx:0,dy:0,power:0,target:null};
-    if(distance>=.16&&speed>=.7&&isShotGesture(p,dx,dy,length)){
+    if(distance<.03||speed<.42)return {kind:'move',dx:0,dy:0,power:0,target:null};
+    if(distance>=.12&&speed>=.55&&isShotGesture(p,dx,dy,length)){
       const goalY=attackGoal(p.side),x=clamp(p.x+dx*(goalY-p.y)/dy,-8,8);
       return {kind:'shot',dx:x-p.x,dy:goalY-p.y,power:clamp(length/13,.42,1),target:null};
     }
@@ -728,6 +778,8 @@
     clearPointer();
   }
 
+  tackleButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();tryManualTackle();});
+
   canvas.addEventListener('pointerup',event=>finishPointer(event,false));
   canvas.addEventListener('pointercancel',event=>finishPointer(event,true));
   canvas.addEventListener('lostpointercapture',event=>{if(pointer?.id===event.pointerId)clearPointer();});
@@ -751,11 +803,15 @@
     if(teamButton){selectedCountry=Number(teamButton.dataset.team);showTeams(mode);return;}
     const button=event.target.closest('[data-action]');if(!button)return;
     const action=button.dataset.action;
-    if(action==='team')showTeams('practice');
+    if(action==='team'){if(!tutorialSeen){mode='practice';showTutorial(0);}else showTeams('practice');}
+    else if(action==='tutorial'){mode='practice';showTutorial(0);}
+    else if(action==='tutorial-next'||action==='tutorial-prev')showTutorial(Number(button.dataset.step));
+    else if(action==='tutorial-finish'){tutorialSeen=true;store.set('kkoma-tutorial-done',true);showTeams('practice');}
+    else if(action==='tutorial-skip'){tutorialSeen=true;store.set('kkoma-tutorial-done',true);showTeams('practice');}
     else if(action==='cup')showTeams('cup');
     else if(action==='home')showHome();
     else if(action==='play')startMatch();
-    else if(action==='resume'){appScreen='match';game.paused=false;screen.innerHTML='';dragHint.classList.remove('hidden');}
+    else if(action==='resume'){appScreen='match';game.paused=false;screen.innerHTML='';dragHint.classList.remove('hidden');tackleButton.classList.remove('hidden');}
     else if(action==='mute'){muted=!muted;store.set('kkoma-muted',muted);pauseGame();}
     else if(action==='retry')startMatch();
     else if(action==='next'){showTeams('cup');}
