@@ -3,7 +3,7 @@
 GitHub Pages에서 실행되는 정적 모바일 축구 시제품입니다.
 
 - 플레이: https://seungmin-park-psm1757.github.io/kkoma-soccer-game-demo/
-- 앱 파일: `index.html`, `game.css`, `game.js`
+- 앱 파일: `index.html`, `game.css`, `game.js`, `ending-content.js`
 - 전체 설계와 개발 이력은 비공개 원본 저장소에서 관리합니다.
 
 ## 조작
@@ -20,13 +20,14 @@ GitHub Pages에서 실행되는 정적 모바일 축구 시제품입니다.
 
 초등학교 저학년이 처음 플레이하는 상황을 기준으로 연습 경기와 월드컵 초반의 AI 속도·압박·자동 태클 빈도를 낮추고, 패스·슛 스와이프 판정 범위를 넓혔습니다.
 
-48개 국가의 속도·패스·슛은 0.96~1.05 범위의 작은 차이만 두는 아케이드 개성입니다. 팀 선택 화면에서는 네 칸 점으로 표시합니다. 두 팀 상의 색이 비슷하면 원정 유니폼을 자동으로 사용합니다. 월드컵 진행 기록은 기존 `kkoma-cup-round` localStorage 키를 그대로 사용합니다.
+48개 국가의 속도·패스·슛은 0.96~1.05 범위의 작은 차이만 두는 아케이드 개성입니다. 팀 선택 화면에서는 네 칸 점으로 표시합니다. 두 팀 상의 색이 비슷하면 원정 유니폼을 자동으로 사용합니다. 월드컵 진행 단계는 `kkoma-cup-round`, 실제 우승 여정과 지난 우승 이야기는 `kkoma-cup-journey-v1` localStorage 키에 저장합니다.
 
 ## 자산과 검증
 
 - 그림 위치와 공통 선수 프레임 규격: [`assets/README.md`](assets/README.md)
 - 대한민국은 production idle/run WebP 스프라이트를 사용하며, 미지원 상태·로딩 실패·다른 국가는 Canvas 선수로 자동 fallback합니다. `assets/audio/menu/`의 Soccer Dash 두 곡은 메뉴에서, `assets/audio/match/`의 Kickoff Bounce와 Pocket Pitch는 경기에서 각 목록 중 한 곡을 무작위로 골라 반복 재생합니다. 일시정지와 기존 음소거 설정이 배경음에도 적용됩니다.
 - 로직 검증: `node tests/mobile-logic.mjs` (조작 회귀 및 네 가지 실제 연습 동작)
-- 문법 확인: `node --check game.js`
+- 문법 확인: `node --check game.js` 및 `node --check ending-content.js`
+- 모바일 화면 QA: `node tests/visual-qa.mjs` 및 `node tests/visual-qa.mjs --ending-only` (CI에서는 Noto CJK 한글 폰트로 360×800, 390×844, 412×915 캡처)
 
 로직 검증은 모바일 화면 크기의 포인터 이벤트로 패스 60회, 전후반 슛 40회, 연속 패스·드리블 후 슛·압박·가장자리·포인터 취소·탭 전환을 재현합니다. 실제 안드로이드 기기의 프레임 속도와 손맛은 별도 실기기 확인이 필요합니다.
