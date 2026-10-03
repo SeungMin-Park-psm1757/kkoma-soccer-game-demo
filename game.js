@@ -123,6 +123,123 @@
     get(key,fallback) { try { const v=localStorage.getItem(key); return v===null?fallback:JSON.parse(v); } catch { return fallback; } },
     set(key,value) { try { localStorage.setItem(key,JSON.stringify(value)); } catch {} }
   };
+  const CUP_JOURNEY_KEY='kkoma-cup-journey-v1';
+
+  function readCupJourney() {
+    const saved=store.get(CUP_JOURNEY_KEY,null);
+    if(!saved||saved.version!==1||!saved.current||!Number.isInteger(saved.current.startedRound)||saved.current.startedRound<0||saved.current.startedRound>4||!Array.isArray(saved.current.wins))return null;
+    const validWins=(results,minimumRound=0)=>{
+      const wins=[],seen=new Set();
+      for(const result of results){
+        if(!Number.isInteger(result?.round)||result.round<minimumRound||result.round>4||seen.has(result.round))continue;
+        const home=countries[result.homeId],away=countries[result.awayId];
+        if(!home||!away||home.id===away.id||!Array.isArray(result.score)||result.score.length!==2||!result.score.every(score=>Number.isInteger(score)&&score>=0))continue;
+        const shootout=result.shootout===null?null:Array.isArray(result.shootout)&&result.shootout.length===2&&result.shootout.every(score=>Number.isInteger(score)&&score>=0)?[...result.shootout]:null;
+        if(result.shootout!==null&&!shootout)continue;
+        if(!(result.score[0]>result.score[1]||(result.score[0]===result.score[1]&&shootout&&shootout[0]>shootout[1])))continue;
+        const rawEvents=Array.isArray(result.goalEvents)?result.goalEvents:[],goalEvents=[];
+        let eventScore=[0,0],lastElapsed=-1,validEvents=rawEvents.length>0;
+        for(const goal of rawEvents){
+          if(!Number.isFinite(goal?.elapsed)||goal.elapsed<lastElapsed||goal.elapsed>150||![0,1].includes(goal.side)||!Array.isArray(goal.score)||goal.score.length!==2){validEvents=false;break;}
+          eventScore[goal.side]++;lastElapsed=goal.elapsed;
+          if(goal.score[0]!==eventScore[0]||goal.score[1]!==eventScore[1]){validEvents=false;break;}
+          goalEvents.push({elapsed:goal.elapsed,side:goal.side,score:[...goal.score]});
+        }
+        if(!validEvents||eventScore[0]!==result.score[0]||eventScore[1]!==result.score[1])goalEvents.length=0;
+        wins.push({round:result.round,homeId:home.id,awayId:away.id,score:[...result.score],shootout,goalEvents});seen.add(result.round);
+      }
+      return wins.sort((a,b)=>a.round-b.round);
+    };
+    const wins=validWins(saved.current.wins,saved.current.startedRound);
+    const champion=saved.lastChampion;
+    const championWins=champion&&Array.isArray(champion.wins)?validWins(champion.wins):[];
+    const finalWin=championWins.find(result=>result.round===4);
+    const lastChampion=champion&&countries[champion.countryId]&&finalWin?.homeId===champion.countryId?{countryId:champion.countryId,wins:championWins,factId:typeof champion.factId==='string'?champion.factId:null}:null;
+    return {version:1,current:{startedRound:saved.current.startedRound,completed:Boolean(saved.current.completed),wins},lastChampion};
+  }
+
+  let cupJourney=readCupJourney();
+  function ensureCupJourney() {
+    if(!cupJourney||cupRound<cupJourney.current.startedRound||cupJourney.current.completed){
+      cupJourney={version:1,current:{startedRound:cupRound,completed:false,wins:[]},lastChampion:cupJourney?.lastChampion??null};
+      store.set(CUP_JOURNEY_KEY,cupJourney);
+    }
+    return cupJourney;
+  }
+
+  function recordCupWin() {
+    const journey=ensureCupJourney(),match=game;
+    const result={round:match.round,homeId:match.home.id,awayId:match.away.id,score:[...match.score],shootout:match.shootout?[...match.shootout]:null,
+      goalEvents:match.goalEvents.map(goal=>({elapsed:goal.elapsed,side:goal.side,score:[...goal.score]}))};
+    const index=journey.current.wins.findIndex(item=>item.round===result.round);
+    if(index<0)journey.current.wins.push(result);else journey.current.wins[index]=result;
+    journey.current.wins.sort((a,b)=>a.round-b.round);
+    store.set(CUP_JOURNEY_KEY,journey);
+  }
+
+  function completeCupJourney() {
+    const journey=ensureCupJourney(),countryId=game.home.id,facts=window.KKOMA_ENDING_CONTENT?.facts||[];
+    const localFact=facts.find(fact=>fact.countryId===countryId);
+    const otherFact=facts.length?facts.find((fact,index)=>fact.countryId!==countryId&&index>=countryId%facts.length)||facts.find(fact=>fact.countryId!==countryId):null;
+    journey.current.completed=true;
+    journey.lastChampion={countryId,wins:journey.current.wins.map(result=>({...result,score:[...result.score],shootout:result.shootout?[...result.shootout]:null,goalEvents:result.goalEvents.map(goal=>({...goal,score:[...goal.score]}))})),factId:localFact?null:otherFact?.id||null};
+    store.set(CUP_JOURNEY_KEY,journey);
+    return journey.lastChampion;
+  }
+
+  function cupComparisons(wins) {
+    const ranked=wins.map(result=>({...result,margin:result.score[0]-result.score[1]}));
+    const lines=[];
+    const comeback=ranked.find(result=>result.margin>0&&result.goalEvents.some(goal=>goal.score[0]<goal.score[1]));
+    if(comeback)lines.push(`${roundNames[comeback.round]}에서 먼저 골을 내줬지만 끝에 이겼어!`);
+    const most=ranked.reduce((best,result)=>!best||result.score[0]>best.score[0]?result:best,null);
+    if(most&&most.score[0]>0&&ranked.length>1)lines.push(`${countries[most.awayId].name}전에서 가장 많은 ${most.score[0]}골을 넣었어!`);
+    else if(most&&ranked.length===1)lines.push(most.shootout?`${countries[most.awayId].name}전은 승부차기로 이겼어!`:`${countries[most.awayId].name}전에서 ${most.score[0]}:${most.score[1]}로 이겼어!`);
+    const clean=ranked.find(result=>result.score[1]===0);
+    if(clean&&lines.length<2)lines.push(`${countries[clean.awayId].name}전은 상대에게 골을 내주지 않았어!`);
+    const close=ranked.filter(result=>result.margin>0||result.shootout).reduce((best,result)=>!best||(result.shootout?0:result.margin)<(best.shootout?0:best.margin)?result:best,null);
+    if(close&&lines.length<2&&!lines.some(line=>line.includes(countries[close.awayId].name)))lines.push(close.shootout?`${countries[close.awayId].name}전은 승부차기로 이겼어!`:`${countries[close.awayId].name}전은 한 골 차이였어!`);
+    return lines.slice(0,2);
+  }
+
+  let endingSession=null;
+  function showEnding(snapshot,index=0) {
+    const content=window.KKOMA_ENDING_CONTENT,team=countries[snapshot.countryId];
+    if(!team)return showHome();
+    const facts=content?.facts||[],stories=content?.countryStories?.[team.id]||[
+      {id:`fallback-${team.id}-1`,kind:'fiction',lines:['작은 공을 톡톡!','한 걸음씩 함께 가 보자.'],image:null},
+      {id:`fallback-${team.id}-2`,kind:'fiction',lines:['친구에게 공을 건네!','둘이 뛰니 더 신나.'],image:null},
+      {id:`fallback-${team.id}-3`,kind:'fiction',lines:['트로피가 반짝!','모두 함께 축하해.'],image:null}
+    ],cards=[
+      {title:`${team.flag} ${team.name} 우승!`,lines:['와! 네가 우리 팀을 이끌었구나!','트로피를 번쩍 들어 올려 보자!'],emoji:'🏆'},
+      {title:'우승까지 만난 팀들',wins:snapshot.wins,lines:[snapshot.wins.length?`한 경기씩, 여기까지 왔네!`:'이번 경기 기록은 없지만 우승은 정말 멋져!'],emoji:'⚽'},
+      {title:'우리 팀의 멋진 순간',lines:cupComparisons(snapshot.wins).length?cupComparisons(snapshot.wins):['점수와 상관없이 끝까지 함께 뛰었어!'],emoji:'✨'},
+      ...stories.map(story=>{const fact=facts.find(item=>item.id===story.factId);return {title:fact?`${fact.player} 이야기`:`${team.name} 꼬마 선수 이야기`,lines:fact?.lines||story.lines,emoji:story.kind==='fact'?'🌟':'⚽',fact,image:fact?.image||story.image||null,imageAlt:fact?.imageAlt||story.imageAlt||''};})
+    ];
+    const localFact=facts.find(fact=>fact.countryId===team.id),extraFact=facts.find(fact=>fact.id===snapshot.factId);
+    if(!localFact&&extraFact)cards.push({title:`${countries[extraFact.countryId].name}의 실제 축구 이야기`,lines:extraFact.lines,emoji:'🌟',fact:extraFact});
+    cards.push({title:'오늘의 우승 이야기',lines:['오늘의 우승 이야기는 여기까지!','다음에는 어떤 팀과 놀아볼까?'],emoji:'🎉'});
+    endingSession={snapshot,cards,index:Math.max(0,Math.min(index,cards.length-1))};
+    appScreen='ending';clearPointer();lastTap=null;hud.classList.add('hidden');hint.classList.add('hidden');dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');tutorialOverlay.classList.add('hidden');
+    renderEnding();
+  }
+
+  function renderEnding() {
+    if(!endingSession)return;
+    const {cards,index}=endingSession,card=cards[index],wins=card.wins||[];
+    const rows=wins.map(result=>`<li><span>${roundNames[result.round]} · ${countries[result.homeId].flag} ${countries[result.homeId].name} vs ${countries[result.awayId].flag} ${countries[result.awayId].name}</span><strong>${result.score[0]} : ${result.score[1]}${result.shootout?` · 승부차기 ${result.shootout[0]}:${result.shootout[1]}`:''}</strong></li>`).join('');
+    const fact=card.fact?`<details class="ending-source"><summary>이야기 출처 · ${card.fact.eventYear}</summary><a href="${card.fact.sourceUrl}" target="_blank" rel="noopener noreferrer">${card.fact.sourceTitle} 원문 보기</a></details>`:'';
+    const lines=card.lines.map(line=>`<p>${line}</p>`).join('');
+    const image=typeof card.image==='string'&&card.image.startsWith('assets/ending/')&&!card.image.includes('..')?`<img class="ending-art" data-ending-image data-fallback="${card.emoji}" src="${card.image}" alt="${card.imageAlt||''}">`:card.emoji;
+    const last=index===cards.length-1;
+    screen.className='screen ending-screen';
+    screen.innerHTML=`<article class="panel ending-card${index===0?' celebrate':''}"><div class="ending-count" aria-live="polite">우승 이야기 · ${index+1}/${cards.length}</div><div class="ending-picture"${card.image?'':' aria-hidden="true"'}>${image}</div><h2 class="selection-title">${card.title}</h2>${rows?`<ol class="ending-results">${rows}</ol>`:''}<div class="ending-message">${lines}</div>${fact}<div class="ending-actions">${index?'<button class="game-button ghost" data-action="ending-prev">◀ 이전</button>':''}${last?'<button class="game-button" data-action="cup-new">새 월드컵 시작</button><button class="game-button secondary" data-action="ending-replay">이야기 다시 보기</button><button class="game-button ghost" data-action="ending-home">메뉴로</button>':'<button class="game-button" data-action="ending-next">다음 ▶</button>'}</div></article>`;
+  }
+
+  screen.addEventListener('error',event=>{
+    const image=event.target;
+    if(image?.matches?.('[data-ending-image]')){const picture=image.parentElement;image.remove();picture.textContent=image.dataset.fallback;picture.setAttribute('aria-hidden','true');}
+  },true);
 
   const playerSprites={};
   const loadPlayerSprite=file=>{
@@ -176,7 +293,7 @@
   function showHome() {
     playMusic('menu');
     tutorialSession=null;tutorialOverlay.classList.add('hidden');appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen menu-screen';
-    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="tutorial">👆 조작 연습</button><button class="game-button ghost" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="tutorial">👆 조작 연습</button><button class="game-button ghost" data-action="cup">🏆 월드컵 이어하기</button></div>${cupJourney?.lastChampion?'<button class="ending-history-link" data-action="ending-replay">🏆 지난 우승 이야기</button>':''}<p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
   }
 
   const tutorialPages=[
@@ -311,8 +428,9 @@
     const currentMode=tutorial?'tutorial':mode;
     game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
-      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,
+      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,goalEvents:[],
       tutorial:tutorial?{stepId:tutorialStepId,flow:tutorialFlow,stepIndex:tutorialSession?.stepIndex||0,pendingMode:tutorialSession?.pendingMode||mode,phase:'playing',sceneToken:0,action:null,retryAt:null,stageStart:0,userTouched:false,activePlayers:[],player:null,target:null}:null};
+    if(currentMode==='cup')ensureCupJourney();
     resetPositions(0);cameraY=52.5;lastTap=null;
     appScreen='match';screen.innerHTML='';screen.className='screen';hud.classList.remove('hidden');dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');
     updateHud();
@@ -351,7 +469,7 @@
   }
 
   function finishMatch() {
-    if(!game||game.tutorial)return;
+    if(!game||game.tutorial||game.ended)return;
     playMusic('menu',true);
     clearPointer();lastTap=null;game.restart=null;game.ended=true; appScreen='result'; dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
@@ -361,9 +479,12 @@
     }
     const won=game.score[0]>game.score[1]||(game.shootout&&game.shootout[0]>game.shootout[1]);
     const champion=game.mode==='cup'&&won&&game.round===4;
+    if(game.mode==='cup'&&won)recordCupWin();
+    const championSnapshot=champion?completeCupJourney():null;
     if(game.mode==='cup'&&won&&!champion){cupRound=Math.min(4,cupRound+1);store.set('kkoma-cup-round',cupRound);}
     if(game.mode==='cup'&&!won){cupRound=game.round;store.set('kkoma-cup-round',cupRound);}
     const heading=game.mode==='practice'?(won?'멋진 승리야!':tied?'무승부야!':'다음엔 이길 수 있어!'):(champion?'월드컵 우승!':won?'다음 라운드 진출!':tied?'승부차기 끝에 아쉬운 패배':'다시 도전해봐!');
+    if(champion){showEnding(championSnapshot);return;}
     screen.className='screen';
     screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?(champion?'🏆 우승':game.roundName+' 종료'):'연습 경기 종료'}</span><h2 class="selection-title">${heading}</h2><div class="result-score">${game.score[0]} : ${game.score[1]}</div>${game.shootout?`<p>승부차기　${game.shootout[0]} : ${game.shootout[1]}</p>`:''}<p>${game.home.flag} ${game.home.name}　vs　${game.away.flag} ${game.away.name}</p><div class="button-stack" style="margin:16px auto 0">${won&&game.mode==='cup'&&!champion?'<button class="game-button" data-action="next">다음 경기 ▶</button>':''}<button class="game-button secondary" data-action="retry">다시 경기</button><button class="game-button ghost" data-action="home">메뉴로</button></div></div>`;
   }
@@ -543,7 +664,7 @@
       else retryTutorialScene();
       return;
     }
-    game.score[side]++;updateHud();sfx('goal');
+    game.score[side]++;game.goalEvents.push({elapsed:game.elapsed,side,score:[...game.score]});updateHud();sfx('goal');
     toast(side===0?'골! 정말 멋져!':'상대 팀이 득점했어!',2200);
     resetPositions(side===0?1:0);
   }
@@ -1086,7 +1207,12 @@
     else if(action==='tutorial-menu')showTutorial(tutorialSession?.pendingMode||'practice');
     else if(action==='tutorial-start-match'||action==='tutorial-skip')enterTutorialDestination();
     else if(action==='tutorial-home')showHome();
-    else if(action==='cup'){if(!tutorialSeen)showTutorial('cup');else showTeams('cup');}
+    else if(action==='cup'){if(cupJourney?.current.completed&&cupJourney.lastChampion)showEnding(cupJourney.lastChampion);else if(!tutorialSeen)showTutorial('cup');else showTeams('cup');}
+    else if(action==='ending-next'&&appScreen==='ending'){endingSession.index=Math.min(endingSession.index+1,endingSession.cards.length-1);renderEnding();}
+    else if(action==='ending-prev'&&appScreen==='ending'){endingSession.index=Math.max(0,endingSession.index-1);renderEnding();}
+    else if(action==='ending-replay'&&cupJourney?.lastChampion)showEnding(cupJourney.lastChampion);
+    else if(action==='cup-new'){cupRound=0;store.set('kkoma-cup-round',cupRound);cupJourney={version:1,current:{startedRound:0,completed:false,wins:[]},lastChampion:cupJourney?.lastChampion||null};store.set(CUP_JOURNEY_KEY,cupJourney);showTeams('cup');}
+    else if(action==='ending-home')showHome();
     else if(action==='home')showHome();
     else if(action==='play')startMatch();
     else if(action==='resume'){appScreen='match';game.paused=false;playMusic(game.tutorial?'menu':'match');screen.innerHTML='';if(game.tutorial){tutorialOverlay.classList.remove('hidden');refreshTutorialOverlay();}else{dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}}

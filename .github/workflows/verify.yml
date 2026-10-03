@@ -25,6 +25,9 @@ jobs:
       - name: Check game syntax
         run: node --check game.js
 
+      - name: Check ending content syntax
+        run: node --check ending-content.js
+
       - name: Check test syntax
         run: node --check tests/mobile-logic.mjs
 
