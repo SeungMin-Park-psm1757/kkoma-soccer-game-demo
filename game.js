@@ -171,10 +171,10 @@
   }
 
   const tutorialPages=[
-    {icon:'👆',title:'천천히 끌면 달려요',body:'선수 근처에서 손가락을 천천히 끌어 보세요. 손가락을 따라 움직이면서 공도 같이 몰고 가요.'},
-    {icon:'🤝',title:'빠르게 밀면 패스!',body:'공을 가진 상태에서 동료 쪽으로 짧고 빠르게 밀어요. 청록색 선과 동료의 링이 보이면 패스 준비 완료!'},
-    {icon:'🥅',title:'골대 쪽으로 길게 슛!',body:'상대 골대 방향으로 길고 빠르게 밀어요. 주황색 선이 골문까지 이어지면 손을 떼서 슛해요.'},
-    {icon:'🛡️',title:'공을 뺏을 땐 태클!',body:'상대가 공을 가지면 오른쪽 아래 태클 버튼을 눌러요. 가까운 우리 선수가 달려가서 공을 빼앗아요.'}
+    {icon:'👆',title:'이동',body:'천천히 끌어 보세요.'},
+    {icon:'🤝',title:'패스',body:'공을 가진 뒤 친구 쪽으로 빠르게 밀어요.'},
+    {icon:'🥅',title:'슛',body:'골대를 향해 길게 밀어요.'},
+    {icon:'🛡️',title:'태클',body:'상대가 공을 가지면 태클 버튼을 눌러요.'}
   ];
 
   function showTutorial(step=0) {
@@ -228,6 +228,13 @@
     $('#period-label').textContent=game.period===1?'전반':'후반';
     const elapsedInHalf=game.elapsed%75, remaining=Math.ceil(75-elapsedInHalf);
     $('#clock').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+    const tackleReady=game.ball.owner?.side===1;
+    if(tackleButton.classList.contains('ready')!==tackleReady){
+      tackleButton.classList[tackleReady?'add':'remove']('ready');
+      tackleButton.setAttribute('aria-label',tackleReady?'상대가 공을 가졌어요. 태클 가능':'상대가 공을 가졌을 때 태클');
+    }
+    const controlHint=tackleReady?'공을 가진 상대 쪽으로 태클!':game.ball.owner?.side===0?'끌기 이동 · 친구 쪽 패스 · 골대 쪽 슛':'공 쪽으로 끌어요 · 상대 공은 태클!';
+    if(dragHint.textContent!==controlHint)dragHint.textContent=controlHint;
   }
 
   function toast(text,duration=1700) {
@@ -237,13 +244,13 @@
 
   function pauseGame() {
     if(!game||appScreen!=='match')return;
-    appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen';
-    screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 임시 음색이며, 추후 제작 음원으로 교체해요.</p></div>`;
+    clearPointer();appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen';
+    screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 나중에 바뀌어요.</p></div>`;
   }
 
   function finishMatch() {
     if(!game)return;
-    game.ended=true; appScreen='result'; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
+    clearPointer();game.ended=true; appScreen='result'; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
     if(game.mode==='cup'&&tied){
       const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));

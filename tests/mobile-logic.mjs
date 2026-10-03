@@ -3,7 +3,11 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const listeners={canvas:{},document:{},screen:{}};
-const element=()=>({classList:{add(){},remove(){}},addEventListener(){},innerHTML:'',textContent:''});
+const element=()=>{
+  const classes=new Set(),attributes=new Map();
+  return {classList:{add(...names){names.forEach(name=>classes.add(name));},remove(...names){names.forEach(name=>classes.delete(name));},contains(name){return classes.has(name);}},
+    attributes,addEventListener(){},setAttribute(name,value){attributes.set(name,value);},innerHTML:'',textContent:''};
+};
 const drawImages=[];
 const ctx=new Proxy({setTransform(){},drawImage(...args){drawImages.push(args);}},
   {get(target,key){return key in target?target[key]:()=>{};}});
@@ -20,7 +24,7 @@ const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObser
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,tryManualTackle,game:()=>game,setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,game:()=>game,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -158,6 +162,68 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
   assert.equal(t.tryManualTackle(),true,'manual tackle succeeds in kid-friendly radius');
   assert.equal(game.ball.owner,defender,'manual tackle gives possession to nearest home defender');
+}
+{
+  t.startMatch();const game=t.game(),button=t.tackleButton,homePlayer=game.players[6],awayPlayer=game.players[17];
+  game.ball.owner=homePlayer;t.updateHud();
+  assert.equal(button.classList.contains('ready'),false,'tackle button is subdued when home has the ball');
+  assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌을 때 태클');
+  assert.equal(t.dragHint.textContent,'끌기 이동 · 친구 쪽 패스 · 골대 쪽 슛');
+  assert.equal(t.tryManualTackle(),false,'tackle press while home has the ball does not steal possession');
+  game.ball.owner=awayPlayer;t.updateHud();
+  assert.equal(button.classList.contains('ready'),true,'tackle button is highlighted when opponent has the ball');
+  assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌어요. 태클 가능');
+  assert.equal(t.dragHint.textContent,'공을 가진 상대 쪽으로 태클!');
+  game.ball.owner=homePlayer;t.updateHud();
+  assert.equal(button.classList.contains('ready'),false,'tackle state follows possession changes');
+  game.ball.owner=null;t.updateHud();
+  assert.equal(t.dragHint.textContent,'공 쪽으로 끌어요 · 상대 공은 태클!');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=0;defender.y=55;carrier.x=12;carrier.y=55;carrier.nextDecisionAt=1000;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  assert.equal(t.tryManualTackle(),false,'far tackle starts pressure without instant possession');
+  assert.equal(game.ball.owner,carrier,'far tackle preserves possession while defender closes in');
+  assert.equal(defender.targetX,carrier.x,'far tackle targets the current carrier');
+  assert.equal(t.tryManualTackle(),false,'repeat press during cooldown is harmless');
+  const distance=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
+  t.updateMatch(.1);t.updateMatch(.1);
+  assert.ok(Math.hypot(defender.x-carrier.x,defender.y-carrier.y)<distance,'manual pressure moves toward the carrier');
+  assert.equal(game.ball.owner,carrier,'pressure does not teleport the ball from long range');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=0;defender.y=55;carrier.x=2.5;carrier.y=55;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  assert.equal(t.tryManualTackle(),true,'near tackle succeeds immediately');
+  for(let n=0;n<10;n++)assert.equal(t.tryManualTackle(),false,`repeat tackle ${n} respects cooldown`);
+  assert.equal(game.ball.owner,defender,'rapid repeat presses do not toggle possession');
+}
+{
+  t.startMatch();let game=t.game();const button=t.tackleButton;
+  assert.equal(button.classList.contains('hidden'),false,'tackle button appears in a match');
+  t.showTutorial(0);assert.equal(button.classList.contains('hidden'),true,'tackle button is hidden in tutorial');
+  t.showTeams('practice');assert.equal(button.classList.contains('hidden'),true,'tackle button is hidden during team selection');
+  t.startMatch();game=t.game();const p=game.players[6],point=t.project(p.x,p.y);
+  listeners.canvas.pointerdown(event(point.x,point.y,stamp));
+  listeners.canvas.pointermove(event(point.x+20,point.y+10,stamp+50));
+  assert.ok(game.aim,'drag is active before pause');
+  t.pauseGame();
+  assert.equal(button.classList.contains('hidden'),true,'tackle button is hidden while paused');
+  assert.equal(game.aim,null,'pausing clears a held pointer gesture');
+  assert.equal(t.tryManualTackle(),false,'pause blocks manual tackle');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+  assert.equal(button.classList.contains('hidden'),false,'resume restores tackle button');
+  const endPoint=t.project(game.players[6].x,game.players[6].y);
+  listeners.canvas.pointerdown(event(endPoint.x,endPoint.y,stamp+100));
+  listeners.canvas.pointermove(event(endPoint.x+20,endPoint.y+10,stamp+150));
+  t.finishMatch();assert.equal(button.classList.contains('hidden'),true,'tackle button is hidden on result screen');
+  assert.equal(game.aim,null,'finishing the match clears a held pointer gesture');
+  assert.equal(t.tryManualTackle(),false,'result screen blocks manual tackle');
+  t.startMatch();game=t.game();assert.equal(button.classList.contains('hidden'),false,'retry starts with a fresh tackle control');
 }
 assert.equal(storage.get('kkoma-cup-round'),'2','cup progress preserved');
 await new Promise(resolve=>setTimeout(resolve,0));
