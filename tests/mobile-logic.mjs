@@ -712,4 +712,23 @@ assert.equal(context.window.KKOMA_ENDING_CONTENT.facts.length,8,'sourced real-pl
   assert.ok(penalty.some(line=>/승부차기/.test(line)),'a scoreless penalty win is never described as a high-scoring game');
   assert.equal(t.game(),match,'ending data does not replace the ended match');
 }
+{
+  storage.set('kkoma-cup-journey-v1','{corrupted');
+  assert.equal(t.readCupJourney(),null,'corrupted journey JSON is ignored');
+  storage.set('kkoma-cup-journey-v1',JSON.stringify({version:1,current:{startedRound:2,completed:false,wins:[
+    {round:2,homeId:6,awayId:1,score:[1,0],shootout:null,goalEvents:[]},
+    {round:2,homeId:6,awayId:1,score:[2,0],shootout:null,goalEvents:[]},
+    {round:3,homeId:48,awayId:1,score:[1,0],shootout:null,goalEvents:[]},
+    {round:4,homeId:6,awayId:1,score:[-1,0],shootout:null,goalEvents:[]}
+  ]},lastChampion:{countryId:48,wins:[]}}));
+  const filtered=t.readCupJourney();
+  assert.deepEqual([...filtered.current.wins.map(result=>result.round)],[2],'duplicate rounds keep one valid result');
+  assert.equal(filtered.lastChampion,null,'an unknown champion country cannot create an ending');
+  const originalSet=storage.set;
+  try{
+    storage.set=()=>{throw new Error('storage full');};
+    t.setCupRound(0);t.showTeams('cup');t.startMatch();t.scoreGoal(0);t.finishMatch();
+    assert.equal(t.appScreen(),'result','storage write failure does not crash match completion');
+  }finally{storage.set=originalSet;}
+}
 console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, Korea sprite fallback, and cup journey records');

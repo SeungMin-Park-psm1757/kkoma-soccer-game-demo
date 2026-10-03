@@ -31,5 +31,11 @@ jobs:
       - name: Check test syntax
         run: node --check tests/mobile-logic.mjs
 
+      - name: Check asset test syntax
+        run: node --check tests/assets-integrity.mjs
+
       - name: Run mobile logic tests
         run: node tests/mobile-logic.mjs
+
+      - name: Run asset integrity tests
+        run: node tests/assets-integrity.mjs
