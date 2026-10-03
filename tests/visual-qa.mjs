@@ -3,6 +3,27 @@ import { chromium } from 'playwright-core';
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const viewports=[[360,800],[390,844],[412,915]];
 const origin=`http://127.0.0.1:${process.env.PORT||8000}`;
+const monitoredPages=new WeakMap();
+function monitorPage(page){
+  const errors=[];monitoredPages.set(page,errors);
+  page.on('pageerror',error=>errors.push(`pageerror: ${error.message}`));
+  page.on('console',message=>{if(message.type()==='error'&&!message.text().includes('Failed to load resource'))errors.push(`console: ${message.text()}`);});
+  page.on('requestfailed',request=>{const failure=request.failure()?.errorText;if(failure!=='net::ERR_ABORTED')errors.push(`requestfailed: ${request.url()} (${failure})`);});
+  page.on('response',response=>{if(response.status()>=400&&!response.url().endsWith('/favicon.ico'))errors.push(`HTTP ${response.status()}: ${response.url()}`);});
+}
+function assertNoBrowserErrors(page,label){const errors=monitoredPages.get(page)||[];if(errors.length)throw new Error(`${label}: ${errors.join('; ')}`);}
+async function assertTouchLayout(page,width,height,label){
+  const result=await page.evaluate(()=>({
+    overflow:document.documentElement.scrollWidth>innerWidth||document.body.scrollWidth>innerWidth,
+    buttons:[...document.querySelectorAll('button')].filter(button=>getComputedStyle(button).display!=='none'&&button.getClientRects().length).map(button=>({label:button.getAttribute('aria-label')||button.textContent.trim(),className:button.className,...(()=>{const r=button.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};})()}))
+  }));
+  if(result.overflow)throw new Error(`${label} has horizontal overflow at ${width}x${height}`);
+  for(const button of result.buttons){
+    if(button.width<=0||button.height<=0)throw new Error(`${label} has a zero-size button: ${button.label}`);
+    if(button.x<0||button.y<0||button.x+button.width>width||button.y+button.height>height)throw new Error(`${label} button clipped at ${width}x${height}: ${button.label}`);
+    if(/game-button|tutorial-tile|tackle-button|icon-button|tutorial-control/.test(button.className)&&Math.min(button.width,button.height)<44)throw new Error(`${label} important touch target is under 44px: ${button.label}`);
+  }
+}
 
 if(process.argv.includes('--ending-only')){
   const makeJourney=()=> {
@@ -25,7 +46,7 @@ if(process.argv.includes('--ending-only')){
   };
   for(const [width,height] of viewports){
     const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
-    const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
+    monitorPage(page);
     const journey=makeJourney();
     await page.addInitScript(value=>{
       localStorage.setItem('kkoma-tutorial-done','true');
@@ -34,24 +55,28 @@ if(process.argv.includes('--ending-only')){
     },journey);
     await page.goto(origin,{waitUntil:'networkidle'});
     if(!/꼬마 축구/.test(await page.locator('.title').textContent()||''))throw new Error(`game did not boot at ${width}x${height}`);
+    if(!await page.evaluate(()=>new Audio().canPlayType('audio/mpeg')))throw new Error(`browser cannot play MPEG audio at ${width}x${height}`);
     if(await page.evaluate(()=>Object.keys(window.KKOMA_ENDING_CONTENT?.countryStories||{}).length)!==48)throw new Error(`ending stories failed to load at ${width}x${height}`);
     if(!(await page.evaluate(()=>document.fonts.check('16px "Noto Sans CJK KR"'))))throw new Error(`Korean QA font unavailable at ${width}x${height}`);
     await page.click('[data-action="ending-replay"]');
     await page.waitForSelector('.ending-card');
     if(!/1\/7/.test(await page.locator('.ending-count').textContent()||''))throw new Error(`ending did not open on the first Korea card at ${width}x${height}`);
     await assertFits(page,width,height,'ending first');
+    await assertTouchLayout(page,width,height,'ending first');
     await page.screenshot({path:`visual-qa/ending-first-${width}x${height}.png`,fullPage:true});
 
     await page.click('[data-action="ending-next"]');
     if(await page.locator('.ending-results li').count()!==5)throw new Error(`ending recap does not show five wins at ${width}x${height}`);
     await assertFits(page,width,height,'ending recap');
+    await assertTouchLayout(page,width,height,'ending recap');
     await page.screenshot({path:`visual-qa/ending-recap-${width}x${height}.png`,fullPage:true});
 
     while(await page.locator('[data-action="ending-next"]').count())await page.click('[data-action="ending-next"]');
     if(!await page.locator('[data-action="cup-new"]').count()||!await page.locator('[data-action="ending-replay"]').count())throw new Error(`ending final actions missing at ${width}x${height}`);
     await assertFits(page,width,height,'ending final');
+    await assertTouchLayout(page,width,height,'ending final');
     await page.screenshot({path:`visual-qa/ending-final-${width}x${height}.png`,fullPage:true});
-    if(pageErrors.length)throw new Error(`browser error at ${width}x${height}: ${pageErrors.join('; ')}`);
+    assertNoBrowserErrors(page,`ending ${width}x${height}`);
     await page.close();
   }
   await browser.close();
@@ -61,6 +86,7 @@ if(process.argv.includes('--ending-only')){
 
 async function openKorea(width,height){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+  monitorPage(page);
   await page.goto(origin,{waitUntil:'networkidle'});
   await page.evaluate(()=>localStorage.setItem('kkoma-tutorial-done','true'));
   await page.reload({waitUntil:'networkidle'});
@@ -73,6 +99,7 @@ async function openKorea(width,height){
 
 async function openTutorial(width,height){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+  monitorPage(page);
   await page.goto(origin,{waitUntil:'networkidle'});
   await page.click('[data-action="team"]');
   return page;
@@ -86,16 +113,20 @@ for(const [width,height] of viewports){
     await page.screenshot({path:`visual-qa/tutorial-menu-${width}x${height}.png`,fullPage:true});
     const menuBounds=await page.locator('.tutorial-menu').boundingBox();
     if(!menuBounds||menuBounds.y<0||menuBounds.y+menuBounds.height>height)throw new Error(`tutorial menu clipped at ${width}x${height}`);
+    await assertTouchLayout(page,width,height,'tutorial menu');
     await page.click('[data-action="tutorial-step"][data-step="move"]');
     await page.waitForTimeout(100);
     if(await page.locator('#tutorial-overlay').evaluate(node=>node.classList.contains('hidden')))throw new Error(`tutorial overlay missing at ${width}x${height}`);
     await page.screenshot({path:`visual-qa/tutorial-move-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'tutorial move');
     await page.locator('[data-tutorial-action="menu"]').click();
     await page.click('[data-action="tutorial-step"][data-step="tackle"]');
     await page.waitForTimeout(6100);
     const tackleBounds=await page.locator('#tackle-button').boundingBox();
     if(!tackleBounds||tackleBounds.y<0||tackleBounds.y+tackleBounds.height>height)throw new Error(`tutorial tackle button clipped at ${width}x${height}`);
     await page.screenshot({path:`visual-qa/tutorial-tackle-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'tutorial tackle');
+    assertNoBrowserErrors(page,`tutorial ${width}x${height}`);
     await page.close();
   }
   if(process.argv.includes('--tutorial-only'))continue;
@@ -103,13 +134,16 @@ for(const [width,height] of viewports){
   {
     const page=await openKorea(width,height);
     await page.screenshot({path:`visual-qa/korea-idle-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'match idle');
     const start=center(width,height);
     await page.mouse.move(start.x,start.y);
     await page.mouse.down();
     await page.mouse.move(start.x+28,start.y-18,{steps:10});
     await page.waitForTimeout(180);
     await page.screenshot({path:`visual-qa/korea-run-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'match run');
     await page.mouse.up();
+    assertNoBrowserErrors(page,`match run ${width}x${height}`);
     await page.close();
   }
 
@@ -122,6 +156,8 @@ for(const [width,height] of viewports){
     await page.mouse.up();
     await page.waitForTimeout(80);
     await page.screenshot({path:`visual-qa/korea-pass-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'match pass');
+    assertNoBrowserErrors(page,`match pass ${width}x${height}`);
     await page.close();
   }
 
@@ -134,6 +170,8 @@ for(const [width,height] of viewports){
     await page.mouse.up();
     await page.waitForTimeout(90);
     await page.screenshot({path:`visual-qa/korea-forward-intent-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'match shot intent');
+    assertNoBrowserErrors(page,`match shot intent ${width}x${height}`);
     await page.close();
   }
 }
