@@ -151,7 +151,8 @@
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
   let tutorialSeen=Boolean(store.get('kkoma-tutorial-done',false));
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
-  let pointer=null, messageTimer=0;
+  let pointer=null, lastTap=null, messageTimer=0;
+  const DOUBLE_TAP_MS=460, TAP_MOVE_LIMIT=.045;
 
   function resize() {
     const rect=canvas.getBoundingClientRect(); size.w=rect.width; size.h=rect.height; size.dpr=Math.min(devicePixelRatio||1,2);
@@ -171,10 +172,10 @@
   }
 
   const tutorialPages=[
-    {icon:'👆',title:'이동',body:'천천히 끌어 보세요.'},
-    {icon:'🤝',title:'패스',body:'공을 가진 뒤 친구 쪽으로 빠르게 밀어요.'},
-    {icon:'🥅',title:'슛',body:'골대를 향해 길게 밀어요.'},
-    {icon:'🛡️',title:'태클',body:'상대가 공을 가지면 태클 버튼을 눌러요.'}
+    {icon:'👆',title:'이동',body:'가고 싶은 방향으로 끌고 있으면 계속 달려요.'},
+    {icon:'🤝',title:'패스',body:'끌다가 손을 떼면 그 방향으로 패스해요.'},
+    {icon:'🥅',title:'슛',body:'골대 쪽으로 길게 끌다가 손을 떼요.'},
+    {icon:'🛡️',title:'태클',body:'공 가진 상대를 가까이서 두 번 톡톡!'}
   ];
 
   function showTutorial(step=0) {
@@ -216,7 +217,7 @@
     game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
       controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0};
-    resetPositions(0);cameraY=52.5;
+    resetPositions(0);cameraY=52.5;lastTap=null;
     appScreen='match'; screen.innerHTML=''; screen.className='screen'; hud.classList.remove('hidden'); dragHint.classList.remove('hidden'); tackleButton.classList.remove('hidden');
     updateHud(); toast(mode==='cup'?`${roundNames[cupRound]} · ${home.name} vs ${away.name}`:`${home.name} vs ${away.name}`);
   }
@@ -233,7 +234,7 @@
       tackleButton.classList[tackleReady?'add':'remove']('ready');
       tackleButton.setAttribute('aria-label',tackleReady?'상대가 공을 가졌어요. 태클 가능':'상대가 공을 가졌을 때 태클');
     }
-    const controlHint=tackleReady?'공을 가진 상대 쪽으로 태클!':game.ball.owner?.side===0?'끌기 이동 · 친구 쪽 패스 · 골대 쪽 슛':'공 쪽으로 끌어요 · 상대 공은 태클!';
+    const controlHint=tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
     if(dragHint.textContent!==controlHint)dragHint.textContent=controlHint;
   }
 
@@ -244,13 +245,13 @@
 
   function pauseGame() {
     if(!game||appScreen!=='match')return;
-    clearPointer();appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen';
+    clearPointer();lastTap=null;appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden'); screen.className='screen';
     screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 나중에 바뀌어요.</p></div>`;
   }
 
   function finishMatch() {
     if(!game)return;
-    clearPointer();game.ended=true; appScreen='result'; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
+    clearPointer();lastTap=null;game.ended=true; appScreen='result'; dragHint.classList.add('hidden'); tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
     if(game.mode==='cup'&&tied){
       const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));
@@ -378,7 +379,13 @@
 
     for(const p of game.players){
       if(p.side===0&&pointer?.player===p){
-        moveToward(p,p.targetX,p.targetY,dt,1.75);
+        const driveLength=Math.hypot(pointer.driveX||0,pointer.driveY||0);
+        if(driveLength>.001&&(pointer.driveStrength||0)>0){
+          const lookAhead=34;
+          const tx=clamp(p.x+pointer.driveX*lookAhead,-33,33);
+          const ty=clamp(p.y+pointer.driveY*lookAhead,3,102);
+          moveToward(p,tx,ty,dt,1.05+(pointer.driveStrength||0)*.72);
+        }
         if(ball.owner===p){ball.x=p.x;ball.y=p.y-attackDirectionY(0)*1.7;}
         continue;
       }
@@ -722,10 +729,10 @@
     return {dx:px*active.worldPerPixelX,dy:py*active.worldPerPixelY,distance,speed:distance/duration};
   }
 
-  function resolveGesture(p,{dx,dy,distance,speed}) {
+  function resolveGesture(p,{dx,dy,distance}) {
     const length=Math.hypot(dx,dy);
-    if(distance<.03||speed<.42)return {kind:'move',dx:0,dy:0,power:0,target:null};
-    if(distance>=.12&&speed>=.55&&isShotGesture(p,dx,dy,length)){
+    if(distance<TAP_MOVE_LIMIT||length<.8)return {kind:'move',dx:0,dy:0,power:0,target:null};
+    if(distance>=.11&&isShotGesture(p,dx,dy,length)){
       const goalY=attackGoal(p.side),x=clamp(p.x+dx*(goalY-p.y)/dy,-8,8);
       return {kind:'shot',dx:x-p.x,dy:goalY-p.y,power:clamp(length/13,.42,1),target:null};
     }
@@ -743,6 +750,21 @@
     if(game)game.aim=null;
   }
 
+  function handleTapTackle(point,time) {
+    const carrier=game?.ball?.owner;
+    if(!carrier||carrier.side!==1){lastTap=null;return false;}
+    const carrierPoint=project(carrier.x,carrier.y);
+    const hitRadius=clamp(size.w*.19,60,78);
+    if(Math.hypot(point.x-carrierPoint.x,point.y-carrierPoint.y)>hitRadius){lastTap=null;return false;}
+    const previous=lastTap;
+    const repeatRadius=clamp(size.w*.17,54,70);
+    const isDouble=previous&&time-previous.time<=DOUBLE_TAP_MS&&Math.hypot(point.x-previous.x,point.y-previous.y)<=repeatRadius;
+    lastTap={x:point.x,y:point.y,time};
+    if(!isDouble)return false;
+    lastTap=null;
+    return tryManualTackle();
+  }
+
   canvas.addEventListener('pointerdown',event=>{
     if(appScreen!=='match'||!game||pointer)return;
     event.preventDefault();canvas.setPointerCapture(event.pointerId);
@@ -751,7 +773,7 @@
     game.controlled=selected.index;
     const scale=project(selected.x,selected.y).scale;
     pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:startPoint,last:startPoint,startTime:event.timeStamp,
-      worldPerPixelX:34/(size.w*.46*scale),worldPerPixelY:CAMERA_SPAN/(size.h-82)};
+      worldPerPixelX:34/(size.w*.46*scale),worldPerPixelY:CAMERA_SPAN/(size.h-82),driveX:0,driveY:0,driveStrength:0};
     game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,startScreenX:startPoint.x,startScreenY:startPoint.y,rawScreenX:startPoint.x,rawScreenY:startPoint.y,kind:'move',target:null};
     if(!muted)ensureAudio();
   });
@@ -759,8 +781,13 @@
   canvas.addEventListener('pointermove',event=>{
     if(!pointer||pointer.id!==event.pointerId||!game)return;event.preventDefault();
     const point=canvasPoint(event),metrics=gestureMetrics(pointer,point,event.timeStamp),delta={x:metrics.dx,y:metrics.dy};
-    const dragLength=Math.hypot(delta.x,delta.y),scale=Math.min(1,14/(dragLength||1));
-    const p=pointer.player;p.targetX=clamp(pointer.origin.x+delta.x*scale,-33,33);p.targetY=clamp(pointer.origin.y+delta.y*scale,3,102);
+    const dragLength=Math.hypot(delta.x,delta.y),p=pointer.player;
+    if(metrics.distance>=.025&&dragLength>.001){
+      pointer.driveX=delta.x/dragLength;pointer.driveY=delta.y/dragLength;
+      pointer.driveStrength=clamp((metrics.distance-.025)/.12,.35,1);
+    }else{
+      pointer.driveX=pointer.driveY=pointer.driveStrength=0;
+    }
     const intent=game.ball.owner===p?resolveGesture(p,metrics):{kind:'move',target:null};
     const aimDx=intent.kind==='pass'&&intent.target?intent.dx:intent.kind==='shot'?intent.dx:delta.x*2;
     const aimDy=intent.kind==='pass'&&intent.target?intent.dy:intent.kind==='shot'?intent.dy:delta.y*2;
@@ -774,13 +801,16 @@
     if(!cancelled)event.preventDefault();
     const p=pointer.player;
     const endPoint=cancelled?pointer.last:canvasPoint(event);
-    const metrics=gestureMetrics(pointer,endPoint,event.timeStamp),{dx,dy}=metrics,length=Math.hypot(dx,dy);
+    const metrics=gestureMetrics(pointer,endPoint,event.timeStamp);
     if(!cancelled&&game.ball.owner===p){
       const intent=resolveGesture(p,metrics);
       if(intent.kind==='shot')kick(p,intent.dx,intent.dy,intent.power,true);
       else if(intent.kind==='pass')kick(p,intent.dx,intent.dy,intent.power,false);
-    }else if(!cancelled&&length>=1.15){
-      p.targetX=clamp(p.x+dx*1.3,-33,33);p.targetY=clamp(p.y+dy*1.3,1,104);p.manualUntil=game.elapsed+1.2;
+      lastTap=null;
+    }else if(!cancelled&&metrics.distance<TAP_MOVE_LIMIT){
+      handleTapTackle(endPoint,event.timeStamp);
+    }else if(!cancelled){
+      lastTap=null;
     }
     clearPointer();
   }

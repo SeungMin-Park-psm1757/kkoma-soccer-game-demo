@@ -111,10 +111,26 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(drag(mate,dx,dy,65).kind,'pass','pass immediately after pass');
 }
 {
-  const {game,p}=setup(0,18,20,50);
-  assert.equal(drag(p,30,-10,900).kind,'move','slow dribble');
-  assert.equal(game.ball.owner,p,'dribble retains ball');
-  assert.equal(drag(p,0,-110,95).kind,'shot','shot after dribble');
+  const {game,p}=setup(0,80,20,50),start=t.project(p.x,p.y),begin=stamp,startY=p.y;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x,start.y-95,begin+80));
+  for(let n=0;n<120;n++)t.updateMatch(1/60);
+  assert.ok(p.y<startY-15,'held upward drag keeps moving beyond the old fixed target limit');
+  assert.equal(game.ball.owner,p,'held dribble keeps possession before release');
+  listeners.canvas.pointercancel(event(start.x,start.y-95,begin+2080));
+  id++;stamp+=3000;
+}
+{
+  const {game,p,mate}=setup(0,55,10,50),start=t.project(p.x,p.y),target=t.project(mate.x,mate.y),begin=stamp;
+  const dx=target.x-start.x,dy=target.y-start.y,length=Math.hypot(dx,dy),scale=70/length;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+dx*scale,start.y+dy*scale,begin+80));
+  for(let n=0;n<72;n++)t.updateMatch(1/60);
+  const preview=game.aim;
+  assert.equal(preview.kind,'pass','held drag previews release pass even after a long hold');
+  listeners.canvas.pointerup(event(start.x+dx*scale,start.y+dy*scale,begin+1280));
+  assert.equal(game.ball.lastKicker,p,'releasing a held drag performs the pass');
+  id++;stamp+=2000;
 }
 {
   const {p,mate,game}=setup(0,55,6,49);game.players[17].x=5;game.players[17].y=57;
@@ -168,16 +184,16 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   game.ball.owner=homePlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),false,'tackle button is subdued when home has the ball');
   assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌을 때 태클');
-  assert.equal(t.dragHint.textContent,'끌기 이동 · 친구 쪽 패스 · 골대 쪽 슛');
+  assert.equal(t.dragHint.textContent,'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛');
   assert.equal(t.tryManualTackle(),false,'tackle press while home has the ball does not steal possession');
   game.ball.owner=awayPlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),true,'tackle button is highlighted when opponent has the ball');
   assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌어요. 태클 가능');
-  assert.equal(t.dragHint.textContent,'공을 가진 상대 쪽으로 태클!');
+  assert.equal(t.dragHint.textContent,'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능');
   game.ball.owner=homePlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),false,'tackle state follows possession changes');
   game.ball.owner=null;t.updateHud();
-  assert.equal(t.dragHint.textContent,'공 쪽으로 끌어요 · 상대 공은 태클!');
+  assert.equal(t.dragHint.textContent,'공 쪽으로 끌고 가요');
 }
 {
   t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
@@ -201,6 +217,33 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(t.tryManualTackle(),true,'near tackle succeeds immediately');
   for(let n=0;n<10;n++)assert.equal(t.tryManualTackle(),false,`repeat tackle ${n} respects cooldown`);
   assert.equal(game.ball.owner,defender,'rapid repeat presses do not toggle possession');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=1.8;defender.y=55;carrier.x=0;carrier.y=55;carrier.nextDecisionAt=1000;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;t.updateHud();
+  const c=t.project(carrier.x,carrier.y),first=stamp;
+  listeners.canvas.pointerdown(event(c.x,c.y,first));
+  listeners.canvas.pointerup(event(c.x+2,c.y+1,first+70));
+  id++;
+  assert.equal(game.ball.owner,carrier,'first tap near carrier does not tackle yet');
+  listeners.canvas.pointerdown(event(c.x+3,c.y+2,first+260));
+  listeners.canvas.pointerup(event(c.x+4,c.y+2,first+330));
+  assert.equal(game.ball.owner,defender,'second nearby tap tackles on mobile');
+  id++;stamp+=1200;
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  defender.x=1.5;defender.y=55;carrier.x=0;carrier.y=55;carrier.nextDecisionAt=1000;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  const c=t.project(carrier.x,carrier.y),farX=Math.max(5,c.x-150),first=stamp;
+  listeners.canvas.pointerdown(event(farX,c.y,first));
+  listeners.canvas.pointerup(event(farX,c.y,first+60));id++;
+  listeners.canvas.pointerdown(event(farX+2,c.y+1,first+250));
+  listeners.canvas.pointerup(event(farX+2,c.y+1,first+310));
+  assert.equal(game.ball.owner,carrier,'double tap away from the carrier does not steal');
+  id++;stamp+=1200;
 }
 {
   t.startMatch();let game=t.game();const button=t.tackleButton;
