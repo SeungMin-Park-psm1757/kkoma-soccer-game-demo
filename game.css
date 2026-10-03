@@ -63,8 +63,24 @@ body { min-height:100dvh; overscroll-behavior:none; }
 .tutorial-emoji { display:grid; place-items:center; width:92px; height:92px; margin:8px auto 14px; border-radius:28px; background:#ffffff18; font-size:54px; }
 .tutorial-body { min-height:74px; margin:10px auto 18px; color:#f5ffe6; font-size:18px; line-height:1.55; }
 .tutorial-dots { margin:8px 0 14px; color:#ffe178; letter-spacing:5px; font-size:18px; }
+.tutorial-menu { width:min(100%,410px); }
+.tutorial-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:18px 0; }
+.tutorial-tile { display:grid; place-items:center; align-content:center; gap:4px; min-height:100px; padding:8px; border:1px solid #ffffff75; border-radius:18px; background:#064437; color:white; font:900 19px 'Malgun Gothic',system-ui,sans-serif; box-shadow:0 4px 0 #032a22; }
+.tutorial-tile:active { transform:translateY(3px); box-shadow:0 1px 0 #032a22; }
+.tutorial-tile span:first-child { font-size:34px; }
+.tutorial-tile.done { outline:3px solid #c7f34b; }
+.tutorial-menu-actions { display:grid; gap:9px; }
+.tutorial-overlay { position:absolute; z-index:2; inset:8px 10px; display:flex; flex-direction:column; justify-content:space-between; pointer-events:none; }
+.tutorial-overlay.hidden { display:none; }
+.tutorial-topline { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px; }
+.tutorial-topline .badge { padding:7px 10px; border:1px solid #ffffff66; background:#062e29e8; font-weight:900; }
+.tutorial-overlay button { pointer-events:auto; }
+.tutorial-control { min-width:44px; min-height:44px; padding:6px 11px; border:1px solid #ffffff80; border-radius:13px; color:white; background:#062e29e8; font-size:16px; font-weight:900; }
+.tutorial-prompt { align-self:center; max-width:90%; margin:0 0 8px; padding:10px 16px; border-radius:999px; color:#173411; background:#d7ff67; box-shadow:0 4px 0 #5e9514; text-align:center; font-size:16px; font-weight:900; }
+.tutorial-overlay.tackle .tutorial-prompt { margin-bottom:142px; }
 @media (max-height:650px) {
   .tackle-button { width:82px; height:58px; bottom:max(58px,calc(env(safe-area-inset-bottom) + 48px)); font-size:18px; }
+  .tutorial-overlay.tackle .tutorial-prompt { margin-bottom:120px; }
   .tutorial-emoji { width:70px; height:70px; font-size:42px; margin:4px auto 8px; }
   .tutorial-body { min-height:58px; font-size:16px; margin:7px auto 10px; }
 }

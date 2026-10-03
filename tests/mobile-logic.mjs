@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const listeners={canvas:{},document:{},screen:{}};
 const element=()=>{
   const classes=new Set(),attributes=new Map();
-  return {classList:{add(...names){names.forEach(name=>classes.add(name));},remove(...names){names.forEach(name=>classes.delete(name));},contains(name){return classes.has(name);}},
+  return {classList:{add(...names){names.forEach(name=>classes.add(name));},remove(...names){names.forEach(name=>classes.delete(name));},toggle(name,force){if(force===undefined)force=!classes.has(name);force?classes.add(name):classes.delete(name);return force;},contains(name){return classes.has(name);}},
     attributes,addEventListener(){},setAttribute(name,value){attributes.set(name,value);},innerHTML:'',textContent:''};
 };
 const drawImages=[];
@@ -32,11 +32,15 @@ const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,de
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,resetPositions,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
 assert.equal(typeof t.playMusic,'function','music playback is wired into the game');
+// Reproduction: the old tutorial only showed cards and could not launch focused practice.
+t.showTutorial();
+for(const step of ['move','pass','shot','tackle'])assert.match(t.screen.innerHTML,new RegExp(`data-action="tutorial-step"[^>]*data-step="${step}"`),`${step} practice is selectable`);
+assert.match(t.screen.innerHTML,/data-action="tutorial-all"/,'tutorial offers a guided full sequence');
 for(const track of [...t.musicTracks.menu,...t.musicTracks.match])assert.ok(existsSync(new URL(`../${track}`,import.meta.url)),`music asset exists: ${track}`);
 for(const [mode,tracks] of Object.entries(t.musicTracks)){
   for(let i=0;i<tracks.length;i++){
@@ -535,4 +539,107 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
     assert.equal(game.restart,null,'goal kick clears its restart state after release');
   }
 }
-console.log('PASS: mobile controls, tackling, keeper restarts, randomized music, and Korea sprite fallback');
+{
+  t.showTutorial('cup');
+  assert.match(t.screen.innerHTML,/조작 연습/,'tutorial opens its touch-first menu');
+  assert.match(t.screen.innerHTML,/처음부터 연습/,'tutorial provides the ordered practice flow');
+  t.enterTutorialDestination();
+  assert.equal(t.appScreen(),'teams','skip enters team selection');
+  assert.match(t.screen.innerHTML,/🏆 .* 시작/,'skip preserves the pending cup destination');
+  assert.equal(storage.get('kkoma-cup-round'),'2','tutorial skip preserves saved cup progress');
+}
+{
+  t.showTutorial('cup');t.startTutorialExercise('move','all');
+  const game=t.game(),tutorial=game.tutorial,p=tutorial.player,start=t.project(p.x,p.y),begin=stamp++;
+  assert.equal(game.mode,'tutorial');assert.equal(game.players.length,22,'tutorial preserves roster indices');
+  assert.equal(t.playersInPlay().length,1,'movement scene contains only its active player');
+  assert.equal(tutorial.pendingMode,'cup','tutorial records the original cup intent');
+  advance(7);assert.equal(t.appScreen(),'match','an untouched tutorial does not fail');
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+125,start.y,begin+80));
+  advance(1.2);
+  assert.equal(t.appScreen(),'tutorial-result','real player movement completes the move exercise');
+  assert.equal(tutorial.phase,'success');
+  listeners.canvas.pointerup(event(start.x+125,start.y,begin+90));
+  assert.equal(game.ball.lastKicker,null,'movement completion cannot leak a kick on release');
+  assert.match(t.screen.innerHTML,/data-action="tutorial-next"/,'sequence offers an explicit next button');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'tutorial-next'}}:null}});
+  assert.equal(t.game().tutorial.stepId,'pass','sequence advances only after the next button');
+  assert.equal(t.game().tutorial.flow,'all');
+}
+{
+  t.showTutorial('practice');t.startTutorialExercise('pass','single');
+  const game=t.game(),tutorial=game.tutorial,p=tutorial.player,mate=game.players[9];
+  assert.equal(t.playersInPlay().length,2,'pass scene has only passer and receiver');
+  assert.equal(mate.x,6);assert.equal(mate.y,48);
+  const a=t.project(p.x,p.y),b=t.project(mate.x,mate.y),begin=stamp++;
+  listeners.canvas.pointerdown(event(a.x,a.y,begin));
+  listeners.canvas.pointerup(event(a.x,a.y,begin+2));
+  assert.equal(tutorial.phase,'playing','a tap cannot complete a pass');
+  listeners.canvas.pointerdown(event(a.x,a.y,begin+20));
+  listeners.canvas.pointermove(event(b.x,b.y,begin+100));
+  listeners.canvas.pointerup(event(b.x,b.y,begin+110));id++;
+  assert.equal(game.tutorial.action?.kind,'pass','release executes a real pass');
+  assert.equal(game.tutorial.action?.target,mate,'pass target is recorded from the real gesture');
+  advance(1.2);
+  assert.equal(game.ball.owner,mate,'the selected teammate receives the real ball');
+  assert.equal(t.appScreen(),'tutorial-result','only the designated teammate receiving completes pass');
+  assert.equal(game.score[0],0,'passing does not alter score');
+  assert.doesNotMatch(t.screen.innerHTML,/data-action="tutorial-next"/,'single pass offers a choice instead of auto-advancing');
+}
+{
+  t.showTutorial('practice');t.startTutorialExercise('pass','single');
+  const game=t.game(),tutorial=game.tutorial,p=tutorial.player,start=t.project(p.x,p.y),begin=stamp++;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x-130,start.y+80,begin+80));
+  listeners.canvas.pointerup(event(start.x-130,start.y+80,begin+90));id++;
+  assert.equal(tutorial.action?.kind,'pass','off-target release still follows the real pass path');
+  assert.notEqual(tutorial.action.target,game.players[9],'off-target pass cannot receive tutorial credit');
+  advance(4.2);
+  assert.equal(game.tutorial.stepId,'pass','miss restarts the same exercise');
+  assert.equal(game.tutorial.phase,'playing');
+  assert.equal(game.tutorial.action,null,'retry clears the prior action');
+  assert.equal(game.tutorial.activePlayers.length,2,'retry restores the scene roster');
+}
+{
+  t.showTutorial('practice');t.startTutorialExercise('shot','single');
+  const game=t.game(),tutorial=game.tutorial,p=tutorial.player,a=t.project(p.x,p.y),b=t.project(0,0),begin=stamp++;
+  assert.equal(t.playersInPlay().length,1,'shot scene excludes every defender and keeper');
+  listeners.canvas.pointerdown(event(a.x,a.y,begin));
+  listeners.canvas.pointermove(event(b.x,b.y,begin+90));
+  assert.equal(game.aim.kind,'shot','goal-directed swipe previews a shot');
+  listeners.canvas.pointerup(event(b.x,b.y,begin+100));id++;
+  assert.equal(game.tutorial.action?.kind,'shot','shot exercise records the real shot action');
+  advance(1.2);
+  assert.equal(game.score[0],0,'tutorial goal is not persisted as a match score');
+  assert.equal(t.appScreen(),'tutorial-result','only the real goal completes shot practice');
+}
+{
+  t.showTutorial('practice');t.startTutorialExercise('tackle','single');
+  const game=t.game(),tutorial=game.tutorial,carrier=game.ball.owner,defender=game.players[6];
+  assert.equal(t.playersInPlay().length,2,'tackle scene contains only attacker and defender');
+  advance(7);assert.equal(t.appScreen(),'match','tackle demo alone does not steal the ball');
+  assert.equal(game.ball.owner,carrier,'automatic pressure is disabled in tackle practice');
+  assert.equal(t.tackleButton.classList.contains('hidden'),false,'button appears after the double-tap demo');
+  t.pauseGame();listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+  assert.equal(t.tackleButton.classList.contains('hidden'),false,'resume restores the delayed tackle button');
+  const point=t.project(carrier.x,carrier.y),tap=(time)=>{listeners.canvas.pointerdown(event(point.x,point.y,time));listeners.canvas.pointerup(event(point.x,point.y,time+1));id++;};
+  tap(stamp);tap(stamp+150);stamp+=1000;
+  assert.equal(game.tutorial.action?.kind,'tackle','a real double tap starts a manual tackle');
+  assert.equal(game.ball.owner,carrier,'chase does not count before physical contact');
+  advance(2.5);
+  assert.equal(game.ball.owner,defender,'the existing chase reaches and wins the ball');
+  assert.equal(t.appScreen(),'tutorial-result','physical manual tackle completes the exercise');
+}
+{
+  t.showTutorial('cup');t.startTutorialExercise('pass','all');
+  const game=t.game();t.finishMatch();assert.equal(game.ended,false,'tutorial cannot enter a normal match result');
+  advance(151);assert.equal(t.appScreen(),'match','tutorial has no half-time or full-time timeout');
+  t.pauseGame();assert.equal(t.appScreen(),'pause');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+  assert.equal(t.appScreen(),'match');assert.equal(game.paused,false,'tutorial resumes from its pause screen');
+  assert.equal(t.tutorialOverlay.classList.contains('hidden'),false,'resume restores the touch-through tutorial overlay');
+  assert.equal(t.musicState().mode,'menu','tutorial resume restores menu music');
+  assert.equal(storage.get('kkoma-cup-round'),'2','tutorial play and pause preserve cup progress');
+}
+console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, and Korea sprite fallback');
