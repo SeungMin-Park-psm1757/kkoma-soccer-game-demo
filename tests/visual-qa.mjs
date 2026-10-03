@@ -5,28 +5,57 @@ const viewports=[[360,800],[390,844],[412,915]];
 const origin=`http://127.0.0.1:${process.env.PORT||8000}`;
 
 if(process.argv.includes('--ending-only')){
+  const makeJourney=()=> {
+    const opponents=[1,2,3,4,5];
+    const wins=opponents.map((awayId,round)=>({
+      round,homeId:6,awayId,score:[round===4?2:1,0],shootout:null,
+      goalEvents:Array.from({length:round===4?2:1},(_,index)=>({elapsed:12+index*18,side:0,score:[index+1,0]}))
+    }));
+    return {version:1,current:{startedRound:0,completed:true,wins},lastChampion:{countryId:6,wins,factId:null}};
+  };
+  const assertFits=async(page,width,height,label)=>{
+    const card=page.locator('.ending-card'),bounds=await card.boundingBox();
+    if(!bounds||bounds.y<0||bounds.y+bounds.height>height)throw new Error(`${label} card clipped at ${width}x${height}`);
+    const actions=page.locator('.ending-actions .game-button');
+    const count=await actions.count();
+    if(count){
+      const buttonBounds=await actions.last().boundingBox();
+      if(!buttonBounds||buttonBounds.y+buttonBounds.height>height)throw new Error(`${label} controls clipped at ${width}x${height}`);
+    }
+  };
   for(const [width,height] of viewports){
     const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
     const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
+    const journey=makeJourney();
+    await page.addInitScript(value=>{
+      localStorage.setItem('kkoma-tutorial-done','true');
+      localStorage.setItem('kkoma-cup-round','4');
+      localStorage.setItem('kkoma-cup-journey-v1',JSON.stringify(value));
+    },journey);
     await page.goto(origin,{waitUntil:'networkidle'});
     if(!/꼬마 축구/.test(await page.locator('.title').textContent()||''))throw new Error(`game did not boot at ${width}x${height}`);
     if(await page.evaluate(()=>Object.keys(window.KKOMA_ENDING_CONTENT?.countryStories||{}).length)!==48)throw new Error(`ending stories failed to load at ${width}x${height}`);
-    await page.evaluate(()=>{
-      const screen=document.querySelector('#screen');screen.className='screen ending-screen';
-      const results=Array.from({length:5},(_,index)=>`<li><span>${['32강','16강','8강','4강','결승'][index]} · 🇰🇷 대한민국 vs 🇧🇷 브라질</span><strong>3 : 1</strong></li>`).join('');
-      screen.innerHTML=`<article class="panel ending-card"><div class="ending-count">우승 이야기 · 2/8</div><div class="ending-picture">⚽</div><h2 class="selection-title">우승까지 만난 팀들</h2><ol class="ending-results">${results}</ol><div class="ending-message"><p>한 경기씩, 여기까지 왔네!</p></div><div class="ending-actions"><button class="game-button">◀ 이전</button><button class="game-button">다음 ▶</button></div></article>`;
-    });
-    const card=page.locator('.ending-card'),buttons=page.locator('.ending-actions button');
-    const bounds=await card.boundingBox(),buttonBounds=await buttons.last().boundingBox();
-    if(!bounds||bounds.y<0||bounds.y+bounds.height>height||!buttonBounds||buttonBounds.y+buttonBounds.height>height)throw new Error(`ending card or controls clipped at ${width}x${height}`);
-    await page.locator('.ending-picture').evaluate(node=>{node.removeAttribute('aria-hidden');node.innerHTML='<img class="ending-art" data-ending-image data-fallback="⚽" src="/assets/ending/missing.webp" alt="">';});
-    await page.waitForFunction(()=>document.querySelector('.ending-picture')?.textContent.trim()==='⚽');
+    if(!(await page.evaluate(()=>document.fonts.check('16px "Noto Sans CJK KR"'))))throw new Error(`Korean QA font unavailable at ${width}x${height}`);
+    await page.click('[data-action="ending-replay"]');
+    await page.waitForSelector('.ending-card');
+    if(!/1\/7/.test(await page.locator('.ending-count').textContent()||''))throw new Error(`ending did not open on the first Korea card at ${width}x${height}`);
+    await assertFits(page,width,height,'ending first');
+    await page.screenshot({path:`visual-qa/ending-first-${width}x${height}.png`,fullPage:true});
+
+    await page.click('[data-action="ending-next"]');
+    if(await page.locator('.ending-results li').count()!==5)throw new Error(`ending recap does not show five wins at ${width}x${height}`);
+    await assertFits(page,width,height,'ending recap');
     await page.screenshot({path:`visual-qa/ending-recap-${width}x${height}.png`,fullPage:true});
+
+    while(await page.locator('[data-action="ending-next"]').count())await page.click('[data-action="ending-next"]');
+    if(!await page.locator('[data-action="cup-new"]').count()||!await page.locator('[data-action="ending-replay"]').count())throw new Error(`ending final actions missing at ${width}x${height}`);
+    await assertFits(page,width,height,'ending final');
+    await page.screenshot({path:`visual-qa/ending-final-${width}x${height}.png`,fullPage:true});
     if(pageErrors.length)throw new Error(`browser error at ${width}x${height}: ${pageErrors.join('; ')}`);
     await page.close();
   }
   await browser.close();
-  console.log('PASS: ending recap fits 360x800, 390x844, and 412x915');
+  console.log('PASS: real ending flow fits 360x800, 390x844, and 412x915 with Korean fonts');
   process.exit(0);
 }
 
