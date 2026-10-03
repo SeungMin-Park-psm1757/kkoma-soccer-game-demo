@@ -153,6 +153,8 @@
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
   let tutorialSeen=Boolean(store.get('kkoma-tutorial-done',false));
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
+  const musicTracks={menu:['assets/audio/menu/Soccer Dash Loop.mp3','assets/audio/menu/Soccer Dash Loop (Take 2).mp3'],match:['assets/audio/match/Kickoff Bounce.mp3','assets/audio/match/Pocket Pitch.mp3']};
+  let musicAudio=null,musicMode=null;
   let pointer=null, lastTap=null, messageTimer=0;
   const DOUBLE_TAP_MS=460, TAP_MOVE_LIMIT=.035;
   const MIN_GESTURE_PIXELS=20, PASS_TARGET_RADIUS=32;
@@ -170,6 +172,7 @@
   }
 
   function showHome() {
+    playMusic('menu');
     appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen menu-screen';
     screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="tutorial">🎓 ${tutorialSeen?'조작법 다시 보기':'처음 하는 법'}</button><button class="game-button ghost" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
   }
@@ -182,6 +185,7 @@
   ];
 
   function showTutorial(step=0) {
+    playMusic('menu');
     const index=clamp(Number(step)||0,0,tutorialPages.length-1),page=tutorialPages[index];
     appScreen='tutorial'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     screen.className='screen menu-screen';
@@ -195,6 +199,7 @@
   }
 
   function showTeams(nextMode) {
+    playMusic('menu');
     mode=nextMode; appScreen='teams'; directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen';
     const chosen=countries[selectedCountry];
     screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
@@ -216,6 +221,7 @@
   }
 
   function startMatch() {
+    playMusic('match',true);
     clearPointer();lastTap=null;
     const home=countries[selectedCountry], away=chooseOpponent();
     game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
@@ -249,13 +255,15 @@
   }
 
   function pauseGame() {
-    if(!game||appScreen!=='match')return;
-    clearPointer();lastTap=null;appScreen='pause'; game.paused=true; dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen';
+    if(!game||!['match','pause'].includes(appScreen))return;
+    if(appScreen==='match'){clearPointer();lastTap=null;game.paused=true;pauseMusic();}
+    appScreen='pause';dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen';
     screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 나중에 바뀌어요.</p></div>`;
   }
 
   function finishMatch() {
     if(!game)return;
+    playMusic('menu',true);
     clearPointer();lastTap=null;game.restart=null;game.ended=true; appScreen='result'; dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
     if(game.mode==='cup'&&tied){
@@ -929,6 +937,13 @@
     if(!audioContext){const AudioCtx=window.AudioContext||window.webkitAudioContext;if(AudioCtx)audioContext=new AudioCtx();}
     if(audioContext?.state==='suspended')audioContext.resume();
   }
+  function playMusic(mode,chooseAgain=false) {
+    const tracks=musicTracks[mode];if(muted||!tracks)return;
+    if(!musicAudio){musicAudio=new Audio();musicAudio.loop=true;musicAudio.volume=.38;musicAudio.preload='auto';}
+    if(chooseAgain||musicMode!==mode){musicAudio.pause();musicAudio.src=tracks[Math.floor(Math.random()*tracks.length)];musicMode=mode;}
+    try{const attempt=musicAudio.play();if(attempt?.catch)attempt.catch(()=>{});}catch{}
+  }
+  function pauseMusic(){musicAudio?.pause();}
   function sfx(type) {
     if(muted)return;ensureAudio();if(!audioContext)return;
     const now=audioContext.currentTime,osc=audioContext.createOscillator(),gain=audioContext.createGain();
@@ -951,7 +966,7 @@
     else if(action==='cup')showTeams('cup');
     else if(action==='home')showHome();
     else if(action==='play')startMatch();
-    else if(action==='resume'){appScreen='match';game.paused=false;screen.innerHTML='';dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}
+    else if(action==='resume'){appScreen='match';game.paused=false;playMusic('match');screen.innerHTML='';dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}
     else if(action==='mute'){muted=!muted;store.set('kkoma-muted',muted);pauseGame();}
     else if(action==='retry')startMatch();
     else if(action==='next'){showTeams('cup');}

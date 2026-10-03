@@ -25,7 +25,7 @@ GitHub Pages에서 실행되는 정적 모바일 축구 시제품입니다.
 ## 자산과 검증
 
 - 그림 위치와 공통 선수 프레임 규격: [`assets/README.md`](assets/README.md)
-- 대한민국은 production idle/run WebP 스프라이트를 사용하며, 미지원 상태·로딩 실패·다른 국가는 Canvas 선수로 자동 fallback합니다. manifest 로더는 국가 키 기반이라 이후 국가 자산을 같은 구조로 확장할 수 있습니다. 현재 외부 음악 파일은 사용하지 않습니다.
+- 대한민국은 production idle/run WebP 스프라이트를 사용하며, 미지원 상태·로딩 실패·다른 국가는 Canvas 선수로 자동 fallback합니다. `assets/audio/menu/`의 Soccer Dash 두 곡은 메뉴에서, `assets/audio/match/`의 Kickoff Bounce와 Pocket Pitch는 경기에서 각 목록 중 한 곡을 무작위로 골라 반복 재생합니다. 일시정지와 기존 음소거 설정이 배경음에도 적용됩니다.
 - 로직 검증: `node tests/mobile-logic.mjs`
 - 문법 확인: `node --check game.js`
 

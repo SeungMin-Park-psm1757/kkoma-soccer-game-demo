@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const listeners={canvas:{},document:{},screen:{}};
@@ -9,6 +9,14 @@ const element=()=>{
     attributes,addEventListener(){},setAttribute(name,value){attributes.set(name,value);},innerHTML:'',textContent:''};
 };
 const drawImages=[];
+const audioInstances=[];
+class AudioStub{
+  constructor(){this.src='';this.loop=false;this.volume=1;this.preload='';this.paused=true;this.currentTime=0;audioInstances.push(this);}
+  play(){this.paused=false;return Promise.resolve();}
+  pause(){this.paused=true;}
+}
+let forcedRandom=null;
+const vmMath=Object.create(Math);vmMath.random=()=>forcedRandom===null?Math.random():forcedRandom;
 const ctx=new Proxy({setTransform(){},drawImage(...args){drawImages.push(args);}},
   {get(target,key){return key in target?target[key]:()=>{};}});
 const canvas={...element(),getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:390,height:844}),
@@ -17,16 +25,43 @@ const screen={...element(),addEventListener(type,fn){listeners.screen[type]=fn;}
 const elements=new Map([['#pitch',canvas],['#screen',screen]]);
 const document={hidden:false,querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector);},
   addEventListener(type,fn){listeners.document[type]=fn;}};
-const storage=new Map([['kkoma-cup-round','2'],['kkoma-muted','true']]);
+const storage=new Map([['kkoma-cup-round','2'],['kkoma-muted','false']]);
 const spriteManifest=JSON.parse(readFileSync(new URL('../assets/players/manifest.json',import.meta.url),'utf8'));
 class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src='';}}
-const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObserver:class{observe(){}},
+const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,devicePixelRatio:1,ResizeObserver:class{observe(){}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,resetPositions,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,game:()=>game,pointer:()=>pointer,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,resetPositions,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
+
+assert.equal(typeof t.playMusic,'function','music playback is wired into the game');
+for(const track of [...t.musicTracks.menu,...t.musicTracks.match])assert.ok(existsSync(new URL(`../${track}`,import.meta.url)),`music asset exists: ${track}`);
+for(const [mode,tracks] of Object.entries(t.musicTracks)){
+  for(let i=0;i<tracks.length;i++){
+    forcedRandom=(i+.2)/tracks.length;t.playMusic(mode,true);
+    assert.equal(t.musicState().src,tracks[i],`${mode} playlist randomly selects track ${i+1}`);
+    assert.equal(t.musicState().mode,mode);
+    assert.equal(t.musicState().loop,true,'background music loops');
+    assert.equal(t.musicState().paused,false,'selected music starts');
+  }
+}
+forcedRandom=null;
+t.startMatch();assert.equal(t.musicState().mode,'match','starting a match switches to match music');
+const matchTrack=t.musicState().src;
+t.pauseGame();assert.equal(t.musicState().paused,true,'pause stops background music');
+listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+assert.equal(t.musicState().src,matchTrack,'resume keeps the selected match track');
+assert.equal(t.musicState().paused,false,'resume restarts background music');
+t.pauseGame();
+listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'mute'}}:null}});
+assert.equal(storage.get('kkoma-muted'),'true','mute setting is persisted');
+assert.equal(t.musicState().paused,true,'mute stops background music');
+t.playMusic('match');assert.equal(t.musicState().paused,true,'muted music cannot start');
+listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'mute'}}:null}});
+listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+assert.equal(t.musicState().paused,false,'unmute and resume restore background music');
 
 assert.equal(t.countries.length,48);
 for(const country of t.countries){
@@ -500,4 +535,4 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
     assert.equal(game.restart,null,'goal kick clears its restart state after release');
   }
 }
-console.log('PASS: mobile controls, tackling, goalkeeper restarts, and Korea sprite fallback');
+console.log('PASS: mobile controls, tackling, keeper restarts, randomized music, and Korea sprite fallback');
