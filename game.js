@@ -104,12 +104,16 @@
   const canvas = document.querySelector('#pitch');
   const ctx = canvas.getContext('2d');
   const screen = document.querySelector('#screen');
+  const tutorialOverlay = document.querySelector('#tutorial-overlay');
   const hud = document.querySelector('#hud');
   const hint = document.querySelector('#hint');
   const dragHint = document.querySelector('#drag-hint');
+  const directionHint = document.querySelector('#attack-direction');
+  const tackleButton = document.querySelector('#tackle-button');
   const $ = (selector) => document.querySelector(selector);
   const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
   const random = (min,max) => min + Math.random() * (max-min);
+  const fieldBounds={minX:-33,maxX:33,minY:1,maxY:104};
   const roundNames = ['32강','16강','8강','4강','결승'];
   const formation = [
     [0,0,5.2,'GK'],[-22,25,5.5,'DF'],[-8,19,5.8,'DF'],[8,19,5.8,'DF'],[22,25,5.5,'DF'],
@@ -148,8 +152,14 @@
   }
 
   let appScreen='home', selectedCountry=6, mode='practice', cupRound=Number(store.get('kkoma-cup-round',0))||0;
+  let tutorialSeen=Boolean(store.get('kkoma-tutorial-done',false));
+  let tutorialSession=null;
   let muted=Boolean(store.get('kkoma-muted',false)), size={w:0,h:0,dpr:1}, game=null, lastFrame=0, audioContext=null, cameraY=52.5;
-  let pointer=null, messageTimer=0;
+  const musicTracks={menu:['assets/audio/menu/Soccer Dash Loop.mp3','assets/audio/menu/Soccer Dash Loop (Take 2).mp3'],match:['assets/audio/match/Kickoff Bounce.mp3','assets/audio/match/Pocket Pitch.mp3']};
+  let musicAudio=null,musicMode=null;
+  let pointer=null, lastTap=null, messageTimer=0;
+  const DOUBLE_TAP_MS=460, TAP_MOVE_LIMIT=.035;
+  const MIN_GESTURE_PIXELS=20, PASS_TARGET_RADIUS=32;
 
   function resize() {
     const rect=canvas.getBoundingClientRect(); size.w=rect.width; size.h=rect.height; size.dpr=Math.min(devicePixelRatio||1,2);
@@ -164,8 +174,106 @@
   }
 
   function showHome() {
-    appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); screen.className='screen menu-screen';
-    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+    playMusic('menu');
+    tutorialSession=null;tutorialOverlay.classList.add('hidden');appScreen='home'; game=null; pointer=null; hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen menu-screen';
+    screen.innerHTML=`<div>${logo()}<h1 class="title">꼬마 축구<br>월드컵</h1><p class="subtitle">공을 몰고 달려서 골을 넣어봐!</p><div class="button-stack"><button class="game-button" data-action="team">⚽ 경기 시작</button><button class="game-button secondary" data-action="tutorial">👆 조작 연습</button><button class="game-button ghost" data-action="cup">🏆 월드컵 이어하기</button></div><p class="fineprint">휴대폰을 세로로 들고 한 손가락으로 플레이해요</p></div>`;
+  }
+
+  const tutorialPages=[
+    {id:'move',icon:'👆',title:'이동',body:'별까지 끌고 있어요'},
+    {id:'pass',icon:'🤝',title:'패스',body:'친구 쪽으로 끌고 손을 떼요'},
+    {id:'shot',icon:'🥅',title:'슛',body:'골대 쪽으로 끌고 손을 떼요'},
+    {id:'tackle',icon:'🛡️',title:'태클',body:'공 가진 상대를 두 번 톡톡!'}
+  ];
+
+  function showTutorial(pendingMode=mode) {
+    playMusic('menu');
+    if(!tutorialSession||tutorialSession.pendingMode!==pendingMode)tutorialSession={pendingMode,flow:'menu',completed:[],stepIndex:0};
+    else tutorialSession.flow='menu';
+    tutorialSession.stepId=null;appScreen='tutorial'; game=null; pointer=null;tutorialOverlay.classList.add('hidden');hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
+    screen.className='screen menu-screen';
+    screen.innerHTML=`<div class="panel tutorial-menu"><p class="tutorial-step">손가락으로 직접 해봐요</p><h2 class="selection-title">조작 연습</h2><div class="tutorial-grid">${tutorialPages.map(page=>`<button class="tutorial-tile${tutorialSession.completed.includes(page.id)?' done':''}" data-action="tutorial-step" data-step="${page.id}" aria-label="${page.title} 연습${tutorialSession.completed.includes(page.id)?', 완료':''}"><span aria-hidden="true">${page.icon}</span><span>${page.title}</span>${tutorialSession.completed.includes(page.id)?'<span aria-hidden="true">✓</span>':''}</button>`).join('')}</div><div class="tutorial-menu-actions"><button class="game-button" data-action="tutorial-all">처음부터 연습</button><button class="game-button secondary" data-action="tutorial-start-match">바로 경기하기</button><button class="game-button ghost" data-action="tutorial-home">메뉴로</button></div></div>`;
+  }
+
+  function startTutorialExercise(stepId,flow='single') {
+    if(!tutorialPages.some(page=>page.id===stepId))return;
+    if(!tutorialSession)tutorialSession={pendingMode:mode,flow,completed:[],stepIndex:0};
+    tutorialSession.flow=flow;tutorialSession.stepId=stepId;tutorialSession.stepIndex=tutorialPages.findIndex(page=>page.id===stepId);tutorialSession.phase='playing';
+    startMatch(stepId,flow);
+  }
+
+  function enterTutorialDestination() {
+    const destination=tutorialSession?.pendingMode||'practice';
+    clearPointer();pauseMusic();game=null;tutorialOverlay.classList.add('hidden');tutorialSeen=true;store.set('kkoma-tutorial-done',true);tutorialSession=null;showTeams(destination);
+  }
+
+  function completeTutorialExercise() {
+    if(!game?.tutorial||game.paused||game.tutorial.phase!=='playing')return false;
+    const tutorial=game.tutorial;
+    tutorial.phase='success';tutorial.retryAt=null;
+    if(!tutorialSession.completed.includes(tutorial.stepId))tutorialSession.completed.push(tutorial.stepId);
+    if(tutorial.flow==='all'&&tutorial.stepIndex===tutorialPages.length-1){tutorialSeen=true;store.set('kkoma-tutorial-done',true);}
+    clearPointer();lastTap=null;game.paused=true;appScreen='tutorial-result';tutorialOverlay.classList.add('hidden');
+    const next=tutorial.stepIndex<tutorialPages.length-1;
+    screen.className='screen';
+    const success=tutorial.stepId==='shot'?'골! 잘했어!':tutorial.stepId==='tackle'?'공을 빼앗았어!':tutorial.stepId==='pass'?'친구가 공을 받았어!':'잘했어!';
+    const nextAction=tutorial.flow==='all'?(next?'<button class="game-button" data-action="tutorial-next">다음 연습 ▶</button>':'<button class="game-button" data-action="tutorial-start-match">경기 시작</button>'):'<button class="game-button" data-action="tutorial-other">다른 연습</button>';
+    screen.innerHTML=`<div class="panel tutorial-card"><div class="tutorial-emoji">⭐</div><h2 class="selection-title">${success}</h2><div class="button-stack" style="margin:auto">${nextAction}<button class="game-button secondary" data-action="tutorial-again">한 번 더</button><button class="game-button ghost" data-action="tutorial-menu">연습 메뉴</button></div></div>`;
+    return true;
+  }
+
+  function retryTutorialScene(delay=.7) {
+    if(!game?.tutorial||game.tutorial.phase!=='playing')return;
+    clearPointer();lastTap=null;game.tutorial.action=null;game.tutorial.retryAt=game.elapsed+delay;
+  }
+
+  function resetTutorialScene() {
+    if(!game?.tutorial)return;
+    const tutorial=game.tutorial,players=game.players;
+    resetPositions(0);tutorial.sceneToken++;tutorial.action=null;tutorial.retryAt=null;tutorial.stageStart=game.elapsed;tutorial.userTouched=false;
+    let active=[players[6]],owner=players[6],target={x:0,y:62},camera=52.5;
+    if(tutorial.stepId==='pass'){
+      const mate=players[9];Object.assign(players[6],{x:-8,y:58});Object.assign(mate,{x:6,y:48});active=[players[6],mate];owner=players[6];target=mate;camera=52.5;
+    }else if(tutorial.stepId==='shot'){
+      Object.assign(players[6],{x:0,y:18});active=[players[6]];owner=players[6];target={x:0,y:0};camera=31;
+    }else if(tutorial.stepId==='tackle'){
+      Object.assign(players[6],{x:0,y:52});Object.assign(players[17],{x:0,y:44});active=[players[6],players[17]];owner=players[17];target=owner;camera=52.5;
+    }else Object.assign(players[6],{x:-8,y:62});
+    for(const p of active){p.targetX=p.x;p.targetY=p.y;}
+    owner.targetX=owner.x;owner.targetY=owner.y;
+    game.ball.owner=owner;game.ball.x=owner.x;game.ball.y=owner.y;game.ball.vx=game.ball.vy=0;game.ball.lastKicker=null;
+    tutorial.activePlayers=active;tutorial.player=players[6];tutorial.target=target;
+    cameraY=camera;game.controlled=6;game.aim=null;
+    if(tutorial.stepId==='tackle'){
+      tackleButton.classList.add('hidden');
+      dragHint.textContent='공 가진 상대를 두 번 톡톡!';
+    }else tackleButton.classList.add('hidden');
+    refreshTutorialOverlay();
+  }
+
+  function drawTutorialGuide() {
+    const tutorial=game?.tutorial;
+    if(!tutorial||tutorial.phase!=='playing'||!tutorial.target)return;
+    const from=project(tutorial.player.x,tutorial.player.y),to=project(tutorial.target.x,tutorial.target.y);
+    const color=tutorial.stepId==='pass'?'#8cecf5':tutorial.stepId==='shot'?'#ffad37':'#fff36a';
+    ctx.save();ctx.strokeStyle=color;ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.setLineDash([]);
+    ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(to.x,to.y,tutorial.stepId==='tackle'?15:13,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+    if(!tutorial.userTouched){
+      const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true;
+      const progress=tutorial.stepId==='tackle'?1:reduced?1:.5-.5*Math.cos((game.elapsed-tutorial.stageStart)*Math.PI*1.25);
+      const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
+      const radius=tutorial.stepId==='tackle'?10+Math.sin((game.elapsed-tutorial.stageStart)*Math.PI*3)*2:10;
+      ctx.fillStyle='#ffffffb8';ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#123e36';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function refreshTutorialOverlay() {
+    if(!game?.tutorial)return;
+    const page=tutorialPages.find(item=>item.id===game.tutorial.stepId),count=game.tutorial.stepIndex+1;
+    tackleButton.classList.toggle('hidden',page.id!=='tackle'||game.elapsed-game.tutorial.stageStart<6);
+    tutorialOverlay.classList.toggle('tackle',page.id==='tackle');
+    tutorialOverlay.innerHTML=`<div class="tutorial-topline"><span class="badge">${page.title} 연습 · ${count}/4</span><div><button class="tutorial-control" data-tutorial-action="menu" aria-label="연습 메뉴">연습</button> <button class="tutorial-control" data-tutorial-action="pause" aria-label="일시정지">Ⅱ</button></div></div><p class="tutorial-prompt">${page.body}</p>`;
   }
 
   function skillDots(value) {
@@ -174,7 +282,8 @@
   }
 
   function showTeams(nextMode) {
-    mode=nextMode; appScreen='teams'; screen.className='screen';
+    playMusic('menu');
+    mode=nextMode; appScreen='teams';tutorialOverlay.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen';
     const chosen=countries[selectedCountry];
     screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
   }
@@ -190,18 +299,25 @@
     return formation.map(([fx,fy,speed,role],index)=>{
       const baseDepth=role==='GK'?5:fy;
       const y=defendingEnd===0?baseDepth:105-baseDepth;
-      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed,role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0};
+      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed,role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0,manualUntil:0,tackleUntil:0,runUntil:0,kickUntil:0,shotUntil:0,actionStartedAt:0};
     });
   }
 
-  function startMatch() {
-    const home=countries[selectedCountry], away=chooseOpponent();
-    game={home,away,kits:matchKits(home,away),mode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.9+cupRound*.3:.45,
+  function startMatch(tutorialStepId=null,tutorialFlow='single') {
+    const tutorial=Boolean(tutorialStepId);
+    if(tutorial)playMusic('menu');else playMusic('match',true);
+    clearPointer();lastTap=null;
+    const home=tutorial?countries.find(country=>country.name==='대한민국'):countries[selectedCountry],away=tutorial?countries.find(country=>country.name==='브라질'):chooseOpponent();
+    const currentMode=tutorial?'tutorial':mode;
+    game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
-      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0};
-    resetPositions(0);cameraY=52.5;
-    appScreen='match'; screen.innerHTML=''; screen.className='screen'; hud.classList.remove('hidden'); dragHint.classList.remove('hidden');
-    updateHud(); toast(mode==='cup'?`${roundNames[cupRound]} · ${home.name} vs ${away.name}`:`${home.name} vs ${away.name}`);
+      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,
+      tutorial:tutorial?{stepId:tutorialStepId,flow:tutorialFlow,stepIndex:tutorialSession?.stepIndex||0,pendingMode:tutorialSession?.pendingMode||mode,phase:'playing',sceneToken:0,action:null,retryAt:null,stageStart:0,userTouched:false,activePlayers:[],player:null,target:null}:null};
+    resetPositions(0);cameraY=52.5;lastTap=null;
+    appScreen='match';screen.innerHTML='';screen.className='screen';hud.classList.remove('hidden');dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');
+    updateHud();
+    if(tutorial){hud.classList.add('hidden');directionHint.classList.add('hidden');dragHint.classList.add('hidden');tutorialOverlay.classList.remove('hidden');resetTutorialScene();}
+    else{tutorialOverlay.classList.add('hidden');updateHud();toast(mode==='cup'?`${roundNames[cupRound]} · ${home.name} vs ${away.name}`:`${home.name} vs ${away.name}`);}
   }
 
   function updateHud() {
@@ -209,8 +325,16 @@
     $('#home-team-label').textContent=game.home.name; $('#away-team-label').textContent=game.away.name;
     $('#home-score').textContent=game.score[0]; $('#away-score').textContent=game.score[1];
     $('#period-label').textContent=game.period===1?'전반':'후반';
+    directionHint.textContent=game.attackDir<0?'↑ 공격　↓ 우리 골대':'↓ 공격　↑ 우리 골대';
     const elapsedInHalf=game.elapsed%75, remaining=Math.ceil(75-elapsedInHalf);
     $('#clock').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+    const tackleReady=game.ball.owner?.side===1&&!game.restart;
+    if(tackleButton.classList.contains('ready')!==tackleReady){
+      tackleButton.classList[tackleReady?'add':'remove']('ready');
+    }
+    tackleButton.setAttribute('aria-label',tackleReady?'상대가 공을 가졌어요. 태클 가능':game.restart?'골키퍼가 공을 차면 다시 태클할 수 있어요':'상대가 공을 가졌을 때 태클');
+    const controlHint=game.restart?.side===0?'골키퍼가 1초 뒤 차요 · 친구 쪽으로 끌어요':game.restart?'골키퍼가 공을 차요':tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
+    if(dragHint.textContent!==controlHint)dragHint.textContent=controlHint;
   }
 
   function toast(text,duration=1700) {
@@ -219,14 +343,17 @@
   }
 
   function pauseGame() {
-    if(!game||appScreen!=='match')return;
-    appScreen='pause'; game.paused=true; dragHint.classList.add('hidden'); screen.className='screen';
-    screen.innerHTML=`<div class="panel"><span class="badge">${game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button><button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button></div><p class="small">효과음은 임시 음색이며, 추후 제작 음원으로 교체해요.</p></div>`;
+    if(!game||!['match','pause'].includes(appScreen))return;
+    if(appScreen==='match'){clearPointer();lastTap=null;game.paused=true;pauseMusic();}
+    appScreen='pause';tutorialOverlay.classList.add('hidden');dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');screen.className='screen';
+    const tutorial=Boolean(game.tutorial);
+    screen.innerHTML=`<div class="panel"><span class="badge">${tutorial?'조작 연습':game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${tutorial?'연습은 잠시 멈췄어요':`${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}`}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button>${tutorial?'<button class="game-button ghost" data-action="tutorial-again">이 단계 다시</button><button class="game-button ghost" data-action="tutorial-menu">연습 메뉴</button>':'<button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button>'}</div>${tutorial?'':'<p class="small">효과음은 나중에 바뀌어요.</p>'}</div>`;
   }
 
   function finishMatch() {
-    if(!game)return;
-    game.ended=true; appScreen='result'; dragHint.classList.add('hidden');
+    if(!game||game.tutorial)return;
+    playMusic('menu',true);
+    clearPointer();lastTap=null;game.restart=null;game.ended=true; appScreen='result'; dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
     if(game.mode==='cup'&&tied){
       const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));
@@ -243,18 +370,28 @@
 
   function moveToward(p,x,y,dt,mult=1) {
     const dx=x-p.x,dy=y-p.y,d=Math.hypot(dx,dy); if(d<.25)return;
-    const step=Math.min(d,p.speed*mult*dt); p.x+=dx/d*step;p.y+=dy/d*step;
+    const step=Math.min(d,p.speed*mult*dt); p.x=clamp(p.x+dx/d*step,fieldBounds.minX,fieldBounds.maxX);p.y=clamp(p.y+dy/d*step,fieldBounds.minY,fieldBounds.maxY);
     if(game&&step>.02)p.runUntil=game.elapsed+.16;
   }
 
   function nearestPlayer(side,x,y,exclude=null) {
     let best=null,bestD=Infinity;
-    for(const p of game.players) if(p.side===side&&p!==exclude){const d=Math.hypot(p.x-x,p.y-y);if(d<bestD){bestD=d;best=p;}}
+    for(const p of playersInPlay()) if(p.side===side&&p!==exclude){const d=Math.hypot(p.x-x,p.y-y);if(d<bestD){bestD=d;best=p;}}
+    return best;
+  }
+
+  function playersInPlay() { return game?.tutorial?game.tutorial.activePlayers:game?.players||[]; }
+
+  function nearestFieldPlayer(side,x,y) {
+    let best=null,bestD=Infinity;
+    for(const p of playersInPlay())if(p.side===side&&p.role!=='GK'){
+      const d=Math.hypot(p.x-x,p.y-y);if(d<bestD){bestD=d;best=p;}
+    }
     return best;
   }
 
   function nearestPlayers(side,x,y,count=2) {
-    return game.players.filter(p=>p.side===side).map(p=>({p,d:Math.hypot(p.x-x,p.y-y)})).sort((a,b)=>a.d-b.d).slice(0,count).map(v=>v.p);
+    return playersInPlay().filter(p=>p.side===side&&p.role!=='GK').map(p=>({p,d:Math.hypot(p.x-x,p.y-y)})).sort((a,b)=>a.d-b.d).slice(0,count).map(v=>v.p);
   }
 
   function attackGoal(side) { return (side===0?game.attackDir:-game.attackDir)<0?0:105; }
@@ -263,7 +400,7 @@
   function laneRisk(from,to,defendingSide=1-from.side) {
     const ax=from.x,ay=from.y,bx=to.x,by=to.y,vx=bx-ax,vy=by-ay,len2=vx*vx+vy*vy||1;
     let risk=0;
-    for(const d of game.players){
+    for(const d of playersInPlay()){
       if(d.side!==defendingSide)continue;
       const t=clamp(((d.x-ax)*vx+(d.y-ay)*vy)/len2,0,1);
       const px=ax+vx*t,py=ay+vy*t,dist=Math.hypot(d.x-px,d.y-py);
@@ -272,11 +409,11 @@
     return risk;
   }
 
-  function passTargetFor(p,dx,dy,maxAngle=72) {
+  function passTargetFor(p,dx,dy,maxAngle=82) {
     const gesture=Math.hypot(dx,dy); if(gesture<1)return null;
     const ux=dx/gesture,uy=dy/gesture,cosLimit=Math.cos(maxAngle*Math.PI/180);
     let best=null,bestScore=-Infinity;
-    for(const mate of game.players){
+    for(const mate of playersInPlay()){
       if(mate.side!==p.side||mate===p)continue;
       const vx=mate.x-p.x,vy=mate.y-p.y,dist=Math.hypot(vx,vy);
       if(dist<2.5||dist>50)continue;
@@ -291,8 +428,26 @@
     return best;
   }
 
+  function passTargetAtFinger(p,dx,dy,point) {
+    const length=Math.hypot(dx,dy);if(length<.8)return null;
+    const ux=dx/length,uy=dy/length;
+    let best=null,bestScore=Infinity;
+    for(const mate of playersInPlay()){
+      if(mate.side!==p.side||mate===p)continue;
+      const distance=Math.hypot(mate.x-p.x,mate.y-p.y);
+      if(distance<2.5||distance>50)continue;
+      const vx=mate.x-p.x,vy=mate.y-p.y,alignment=(vx*ux+vy*uy)/distance;
+      if(alignment<.2)continue;
+      const screen=project(mate.x,mate.y),fingerDistance=Math.hypot(screen.x-point.x,screen.y-point.y);
+      if(fingerDistance>PASS_TARGET_RADIUS)continue;
+      const score=fingerDistance+(1-alignment)*12;
+      if(score<bestScore){bestScore=score;best=mate;}
+    }
+    return best;
+  }
+
   function isShotGesture(p,dx,dy,length) {
-    if(length<4.2||Math.abs(dy)<.12)return false;
+    if(length<3.4||Math.abs(dy)<.1)return false;
     const goalY=attackGoal(p.side),toward=Math.sign(goalY-p.y);
     if(Math.sign(dy)!==toward)return false;
     const t=(goalY-p.y)/dy;
@@ -304,7 +459,7 @@
   function bestAiPass(p) {
     const dir=Math.sign(attackGoal(p.side)-p.y);
     let best=null,bestScore=-Infinity;
-    for(const mate of game.players){
+    for(const mate of playersInPlay()){
       if(mate.side!==p.side||mate===p||mate.role==='GK')continue;
       const dist=Math.hypot(mate.x-p.x,mate.y-p.y);
       if(dist<5||dist>38)continue;
@@ -316,9 +471,10 @@
     return bestScore>-.8?best:null;
   }
 
-  function kick(p,dx,dy,power,shot) {
+  function kick(p,dx,dy,power,shot,tutorialTarget=null) {
     const length=Math.hypot(dx,dy)||1, strength=clamp(power,0,1);
-    const ball=game.ball; ball.owner=null; ball.lastKicker=p; ball.kickLockUntil=game.elapsed+.16;
+    const ball=game.ball;setPossession(null);ball.lastKicker=p; ball.kickLockUntil=game.elapsed+.16;
+    if(game.tutorial)game.tutorial.action={kind:shot?'shot':'pass',actor:p,target:tutorialTarget,sceneToken:game.tutorial.sceneToken,startedAt:game.elapsed};
     ball.x=p.x+dx/length*2.45; ball.y=p.y+dy/length*2.45;
     const skill=shot?(p.team?.rating?.shot||1):(p.team?.rating?.pass||1);
     const speed=((shot?35:23)+strength*(shot?28:17))*skill; ball.vx=dx/length*speed;ball.vy=dy/length*speed;game.lastTouch=p.side;
@@ -328,17 +484,65 @@
     sfx(shot?'kick':'pass');
   }
 
+  function setPossession(player) {
+    const ball=game.ball;
+    if(ball.owner!==player){clearPointer();lastTap=null;}
+    ball.owner=player;ball.vx=ball.vy=0;ball.lastKicker=null;ball.kickLockUntil=0;
+    if(game.manualTackler!==null){
+      const chaser=game.players[game.manualTackler];if(chaser)chaser.manualUntil=chaser.tackleUntil=0;
+      game.manualTackler=null;game.manualTackleUntil=0;
+    }
+    if(!player){game.restart=null;return;}
+    ball.x=player.x;ball.y=player.y;game.lastTouch=player.side;
+    game.restart=player.role==='GK'?{kind:'keeper',side:player.side,taker:player,readyAt:game.elapsed+1,queuedTarget:null,queuedDirection:null}:null;
+  }
+
+  function beginGoalKick(side) {
+    setPossession(null);lastTap=null;
+    const taker=game.players.find(player=>player.side===side&&player.role==='GK');
+    if(!taker)return;
+    taker.x=0;taker.y=ownGoal(side)===0?5:100;taker.targetX=taker.x;taker.targetY=taker.y;
+    game.ball.x=taker.x;game.ball.y=taker.y;game.ball.vx=game.ball.vy=0;
+    game.lastTouch=side;game.restart={kind:'goalKick',side,taker,readyAt:game.elapsed+1,queuedTarget:null,queuedDirection:null};
+    clearPointer();toast('골키퍼가 1초 뒤 공을 차요',1100);
+  }
+
+  function updateRestart() {
+    const restart=game?.restart;if(!restart)return false;
+    const {taker,side}=restart,ball=game.ball;
+    ball.owner=restart.kind==='keeper'?taker:null;ball.x=taker.x;ball.y=taker.y;ball.vx=ball.vy=0;
+    if(game.elapsed<restart.readyAt){refreshPointerAim();updateHud();return true;}
+    let target=restart.queuedTarget;
+    if(!target||target.side!==side||target.role==='GK'||Math.hypot(target.x-taker.x,target.y-taker.y)>50)target=null;
+    let dx,dy;
+    if(target){dx=target.x-taker.x;dy=target.y-taker.y;}
+    else if(restart.queuedDirection){({dx,dy}=restart.queuedDirection);}
+    else{
+      target=bestAiPass(taker);
+      if(target){dx=target.x-taker.x;dy=target.y-taker.y;}
+      else{dx=0;dy=attackGoal(side)-taker.y;}
+    }
+    game.restart=null;kick(taker,dx,dy,.55,false);updateHud();return true;
+  }
+
   function resetPositions(kickoffSide=0) {
+    clearPointer();lastTap=null;
+    game.manualTackler=null;game.manualTackleUntil=0;game.restart=null;
     for(let i=0;i<game.players.length;i++){
       const side=i<11?0:1, idx=i%11, team=side===0?game.home:game.away;
       const clone=makeTeam(team,side,game.attackDir)[idx];Object.assign(game.players[i],clone);
     }
     const taker=game.players[kickoffSide===0?6:17];taker.x=0;taker.y=52.5;
-    game.ball.x=0;game.ball.y=52.5;game.ball.vx=game.ball.vy=0;game.ball.owner=taker;game.ball.lastKicker=null;game.ball.kickLockUntil=0;
+    game.ball.x=0;game.ball.y=52.5;setPossession(taker);game.ball.lastKicker=null;
     game.controlled=kickoffSide===0?taker.index:6; game.aim=null;
   }
 
   function scoreGoal(side) {
+    if(game.tutorial){
+      if(side===0&&game.tutorial.stepId==='shot'&&game.tutorial.action?.kind==='shot'&&game.tutorial.action.sceneToken===game.tutorial.sceneToken)completeTutorialExercise();
+      else retryTutorialScene();
+      return;
+    }
     game.score[side]++;updateHud();sfx('goal');
     toast(side===0?'골! 정말 멋져!':'상대 팀이 득점했어!',2200);
     resetPositions(side===0?1:0);
@@ -347,29 +551,52 @@
   function updateMatch(dt) {
     if(!game||game.paused||game.ended)return;
     game.elapsed+=dt;
+    if(game.tutorial?.retryAt!==null&&game.tutorial?.retryAt!==undefined){if(game.elapsed>=game.tutorial.retryAt)resetTutorialScene();else return;}
+    if(game.tutorial?.stepId==='tackle'&&game.elapsed-game.tutorial.stageStart>=6)tackleButton.classList.remove('hidden');
     cameraY+=(game.ball.y-cameraY)*(1-Math.exp(-2.2*dt));
-    if(game.elapsed>=150){game.elapsed=150;updateHud();finishMatch();return;}
-    if(game.elapsed>=75&&game.period===1){game.period=2;game.attackDir=1;resetPositions(1);toast('후반 시작! 진영이 바뀌었어');}
-    const ball=game.ball, owner=ball.owner;
+    if(!game.tutorial&&game.elapsed>=150){game.elapsed=150;updateHud();finishMatch();return;}
+    if(!game.tutorial&&game.elapsed>=75&&game.period===1){game.period=2;game.attackDir=1;resetPositions(1);toast('후반 시작! 진영이 바뀌었어');}
+    const ball=game.ball;
+    if(updateRestart())return;
+    const owner=ball.owner;
 
-    for(const p of game.players){
+    if(game.manualTackler!==null){
+      const chaser=game.players[game.manualTackler],carrier=ball.owner;
+      if(!chaser||!carrier||carrier.side!==1||game.elapsed>=game.manualTackleUntil){
+        if(chaser)chaser.manualUntil=chaser.tackleUntil=0;
+        game.manualTackler=null;game.manualTackleUntil=0;
+      }else if(!game.tutorial){
+        chaser.targetX=carrier.x;chaser.targetY=carrier.y;
+      }
+    }
+
+    for(const p of playersInPlay()){
       if(p.side===0&&pointer?.player===p){
-        moveToward(p,p.targetX,p.targetY,dt,1.75);
+        const driveLength=Math.hypot(pointer.driveX||0,pointer.driveY||0);
+        if(driveLength>.001&&(pointer.driveStrength||0)>0){
+          const lookAhead=34;
+          const tx=clamp(p.x+pointer.driveX*lookAhead,fieldBounds.minX,fieldBounds.maxX);
+          const ty=clamp(p.y+pointer.driveY*lookAhead,fieldBounds.minY,fieldBounds.maxY);
+          moveToward(p,tx,ty,dt,1.05+(pointer.driveStrength||0)*.72);
+        }
+        if(game.tutorial?.stepId==='move'&&Math.hypot(p.x-game.tutorial.target.x,p.y-game.tutorial.target.y)<=2.5){completeTutorialExercise();return;}
         if(ball.owner===p){ball.x=p.x;ball.y=p.y-attackDirectionY(0)*1.7;}
         continue;
       }
-      if(p.side===0&&game.elapsed<(p.manualUntil||0)){
+      if(p.side===0&&p.index===game.manualTackler&&game.elapsed<game.manualTackleUntil){
         moveToward(p,p.targetX,p.targetY,dt,1.7);
         if(ball.owner===p){ball.x=p.x;ball.y=p.y-attackDirectionY(0)*1.7;}
         continue;
       }
       if(p.role==='GK'){
+        if(ball.owner===p){ball.x=p.x;ball.y=p.y;continue;}
         const gy=ownGoal(p.side), threatX=ball.x;
         moveToward(p,clamp(threatX,-12,12),gy<20?5:100,dt,.78);
         continue;
       }
       if(owner===p){
         if(p.side===1){
+          if(game.tutorial){ball.x=p.x;ball.y=p.y;continue;}
           const goal=attackGoal(1),nearestHome=nearestPlayer(0,p.x,p.y);
           const pressure=nearestHome?Math.hypot(nearestHome.x-p.x,nearestHome.y-p.y):99;
           const distGoal=Math.abs(goal-p.y);
@@ -395,7 +622,7 @@
           }
           let goalX=clamp(-p.x*.18,-4,4);
           if(pressure<7&&nearestHome)goalX=clamp(p.x+(p.x-nearestHome.x)*.7,-22,22);
-          moveToward(p,goalX,goal,dt,.52+game.difficulty*.035);
+          moveToward(p,goalX,goal,dt,.47+game.difficulty*.03);
           ball.x=p.x;ball.y=p.y;
           continue;
         }
@@ -403,12 +630,13 @@
         continue;
       }
 
+      if(game.tutorial)continue;
       if(!owner){
         if(p===nearestPlayer(p.side,ball.x,ball.y))moveToward(p,ball.x,ball.y,dt,1.2);
         else moveToward(p,p.homeX,p.homeY,dt,.58);
       }else if(owner.side!==p.side){
         const chasers=nearestPlayers(p.side,owner.x,owner.y,2);
-        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.82:1.08);
+        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.72:1.12);
         else if(p===chasers[1]){
           const coverY=clamp(owner.y+Math.sign(attackGoal(owner.side)-owner.y)*7,4,101);
           moveToward(p,owner.x,coverY,dt,p.side===1?.62:.86);
@@ -421,12 +649,17 @@
       }
     }
 
-    if(ball.owner){
-      const carrier=ball.owner,defender=nearestPlayer(1-carrier.side,carrier.x,carrier.y);
+    if(ball.owner?.side===1){
+      const charging=game.manualTackler===null?null:game.players[game.manualTackler];
+      if(charging&&Math.hypot(charging.x-ball.owner.x,charging.y-ball.owner.y)<=2.8)completeManualTackle(charging);
+    }
+
+    if(ball.owner&&!game.tutorial){
+      const carrier=ball.owner,defender=nearestFieldPlayer(1-carrier.side,carrier.x,carrier.y);
       if(defender&&game.elapsed>=(game.nextTackleAt||0)){
         const d=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
-        if(d<1.55&&Math.random()<dt*(carrier.side===0?.42:.82)){
-          ball.owner=defender;ball.vx=ball.vy=0;game.lastTouch=defender.side;game.nextTackleAt=game.elapsed+(carrier.side===0?1.15:.72);
+        if(d<1.6&&Math.random()<dt*(carrier.side===0?.26:.7)){
+          setPossession(defender);game.nextTackleAt=game.elapsed+(carrier.side===0?1.45:.68);
           if(defender.side===0){game.controlled=defender.index;toast('공을 빼앗았어!',900);}
         }
       }
@@ -438,13 +671,14 @@
       if(Math.hypot(ball.vx,ball.vy)<1.55)ball.vx=ball.vy=0;
 
       let receiver=null,bestD=Infinity;
-      for(const p of game.players){
+      for(const p of playersInPlay()){
         if(p===ball.lastKicker&&game.elapsed<ball.kickLockUntil)continue;
         const d=Math.hypot(p.x-ball.x,p.y-ball.y);
         if(d<2.18&&d<bestD){bestD=d;receiver=p;}
       }
       if(receiver){
-        ball.owner=receiver;ball.vx=ball.vy=0;
+        setPossession(receiver);
+        if(game.tutorial?.stepId==='pass'&&game.tutorial.action?.kind==='pass'&&game.tutorial.action.sceneToken===game.tutorial.sceneToken&&game.tutorial.action.target===receiver){completeTutorialExercise();return;}
         if(receiver.side===0){
           game.controlled=receiver.index;
           receiver.targetX=receiver.x;
@@ -454,19 +688,53 @@
       }
     }
 
+    if(game.tutorial?.action&&game.elapsed-game.tutorial.action.startedAt>3){retryTutorialScene();return;}
+    if(game.paused)return;
+
     if(ball.y<0||ball.y>105){
       const end=ball.y<0?0:105;
       const scoringSide=attackGoal(0)===end?0:1;
+      if(game.tutorial){if(Math.abs(ball.x)<9.2)scoreGoal(scoringSide);else retryTutorialScene();return;}
       if(Math.abs(ball.x)<9.2)scoreGoal(scoringSide);
-      else {
-        ball.y=end===0?1:104;ball.vy*=-.32;ball.vx*=.62;game.lastTouch=1-game.lastTouch;
-        toast('공이 골라인 밖으로 나갔어',850);
-      }
+      else beginGoalKick(1-scoringSide);
     }
     if(Math.abs(ball.x)>34){
+      if(game.tutorial){retryTutorialScene();return;}
       ball.x=clamp(ball.x,-33,33);ball.vx*=-.38;ball.vy*=.72;toast('터치라인에서 다시 시작해요',850);
     }
-    updateHud();
+    refreshPointerAim();updateHud();
+  }
+
+
+  function completeManualTackle(defender) {
+    const carrier=game?.ball?.owner;
+    if(!carrier||carrier.side!==1||Math.hypot(defender.x-carrier.x,defender.y-carrier.y)>2.8)return false;
+    const tutorialSuccess=game.tutorial?.stepId==='tackle'&&game.tutorial.action?.kind==='tackle'&&game.tutorial.action.sceneToken===game.tutorial.sceneToken;
+    setPossession(defender);
+    game.controlled=defender.index;game.nextTackleAt=game.elapsed+.7;game.manualTackleReadyAt=game.elapsed+.75;
+    defender.manualUntil=defender.tackleUntil=0;defender.targetX=defender.x;defender.targetY=defender.y;
+    game.manualTackler=null;game.manualTackleUntil=0;
+    if(tutorialSuccess)completeTutorialExercise();
+    toast('태클 성공! 공을 빼앗았어!',950);sfx('pass');return true;
+  }
+
+  function tryManualTackle() {
+    if(!game||appScreen!=='match'||game.paused||game.ended)return false;
+    if(game.elapsed<(game.manualTackleReadyAt||0)){toast('조금만 기다렸다 다시 태클!',650);return false;}
+    if(game.restart){toast('골키퍼가 공을 차면 다시 태클할 수 있어!',850);return false;}
+    const carrier=game.ball.owner;
+    if(!carrier||carrier.side!==1){toast('상대가 공을 가졌을 때 태클!',850);return false;}
+    if(game.manualTackleUntil>game.elapsed){toast('수비수가 달려가고 있어!',650);return false;}
+    const defender=nearestFieldPlayer(0,carrier.x,carrier.y);
+    if(!defender)return false;
+    if(game.tutorial)game.tutorial.action={kind:'tackle',actor:defender,target:carrier,sceneToken:game.tutorial.sceneToken,startedAt:game.elapsed};
+    game.controlled=defender.index;
+    defender.targetX=carrier.x;defender.targetY=carrier.y;defender.manualUntil=game.elapsed+2.5;defender.tackleUntil=game.elapsed+2.5;
+    game.manualTackler=defender.index;game.manualTackleUntil=game.elapsed+2.5;
+    const distance=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
+    game.manualTackleReadyAt=game.elapsed+.75;
+    if(distance<=2.8)return completeManualTackle(defender);
+    toast('가까운 선수가 공으로 달려가요!',800);return false;
   }
 
   function attackDirectionY(side) { return Math.sign(attackGoal(side)-52.5); }
@@ -636,7 +904,7 @@
     if(!size.w||!size.h)return;ctx.clearRect(0,0,size.w,size.h);drawField();
     if(game){
       const start=cameraStart(),end=start+CAMERA_SPAN;
-      const ordered=[...game.players].filter(p=>p.y>=start-3&&p.y<=end+3).sort((a,b)=>a.y-b.y);ordered.forEach(drawPlayer);drawBall();drawAim();
+      const ordered=[...playersInPlay()].filter(p=>p.y>=start-3&&p.y<=end+3).sort((a,b)=>a.y-b.y);ordered.forEach(drawPlayer);drawBall();drawAim();drawTutorialGuide();
     }else{
       const preview=[...formation].map(([x,y],i)=>({x:x*.8,y:15+y*.95,side:i%2,color:'#ffb337',index:i}));preview.forEach(p=>drawPlayer(p));
       const ball=project(0,67);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ball.x,ball.y,8,0,Math.PI*2);ctx.fill();
@@ -658,27 +926,43 @@
     return nearBall;
   }
 
-  function gestureMetrics(active,point,time) {
+  function gestureMetrics(active,point) {
     const px=point.x-active.start.x,py=point.y-active.start.y;
-    const distance=Math.hypot(px,py)/size.w;
-    const duration=Math.max((time-active.startTime)/1000,.05);
-    return {dx:px*active.worldPerPixelX,dy:py*active.worldPerPixelY,distance,speed:distance/duration};
+    const screenDistance=Math.hypot(px,py),distance=screenDistance/size.w;
+    const scale=project(active.player.x,active.player.y).scale;
+    return {dx:px*34/(size.w*.46*scale),dy:py*CAMERA_SPAN/(size.h-82),distance,screenDistance};
   }
 
-  function resolveGesture(p,{dx,dy,distance,speed}) {
+  function resolveGesture(p,{dx,dy,distance,screenDistance},point) {
     const length=Math.hypot(dx,dy);
-    if(distance<.035||speed<.55)return {kind:'move',dx:0,dy:0,power:0,target:null};
-    if(distance>=.16&&speed>=.7&&isShotGesture(p,dx,dy,length)){
-      const goalY=attackGoal(p.side),x=clamp(p.x+dx*(goalY-p.y)/dy,-8,8);
-      return {kind:'shot',dx:x-p.x,dy:goalY-p.y,power:clamp(length/13,.42,1),target:null};
-    }
-    const target=passTargetFor(p,dx,dy);
+    if(distance<TAP_MOVE_LIMIT||screenDistance<MIN_GESTURE_PIXELS||length<.8)return {kind:'move',dx:0,dy:0,power:0,target:null};
+    const target=point&&passTargetAtFinger(p,dx,dy,point);
     if(target){
-      const leadY=clamp(target.y+Math.sign(attackGoal(p.side)-target.y)*1.8,1,104);
+      const leadY=clamp(target.y+Math.sign(attackGoal(p.side)-target.y)*1.8,fieldBounds.minY,fieldBounds.maxY);
       const pdx=target.x-p.x,pdy=leadY-p.y,dist=Math.hypot(pdx,pdy);
       return {kind:'pass',dx:pdx,dy:pdy,power:clamp(.34+dist/46,.38,.94),target};
     }
+    if(isShotGesture(p,dx,dy,length)&&Math.abs(attackGoal(p.side)-p.y)<=35){
+      const goalY=attackGoal(p.side),x=clamp(p.x+dx*(goalY-p.y)/dy,-8,8);
+      return {kind:'shot',dx:x-p.x,dy:goalY-p.y,power:clamp(length/13,.42,1),target:null};
+    }
+    const directionalTarget=passTargetFor(p,dx,dy);
+    if(directionalTarget){
+      const leadY=clamp(directionalTarget.y+Math.sign(attackGoal(p.side)-directionalTarget.y)*1.8,fieldBounds.minY,fieldBounds.maxY);
+      const pdx=directionalTarget.x-p.x,pdy=leadY-p.y,dist=Math.hypot(pdx,pdy);
+      return {kind:'pass',dx:pdx,dy:pdy,power:clamp(.34+dist/46,.38,.94),target:directionalTarget};
+    }
     return {kind:'pass',dx,dy,power:clamp(.3+length/18,.36,.9),target:null};
+  }
+
+  function refreshPointerAim() {
+    if(!pointer||!game)return;
+    const p=pointer.player,point=pointer.last,metrics=gestureMetrics(pointer,point);
+    const controls=pointer.startedWithPossession&&(game.ball.owner===p||(game.restart?.side===0&&game.restart.taker===p));
+    const intent=controls?resolveGesture(p,metrics,point):{kind:'move',target:null};
+    const aimDx=intent.kind==='move'?metrics.dx*2:intent.dx,aimDy=intent.kind==='move'?metrics.dy*2:intent.dy;
+    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,fieldBounds.minX,fieldBounds.maxX),toY:clamp(p.y+aimDy,0,105),
+      startScreenX:pointer.start.x,startScreenY:pointer.start.y,rawScreenX:point.x,rawScreenY:point.y,kind:intent.kind,target:intent.target||null};
   }
 
   function clearPointer() {
@@ -686,30 +970,45 @@
     if(game)game.aim=null;
   }
 
+  function handleTapTackle(point,time) {
+    const carrier=game?.ball?.owner;
+    if(!carrier||carrier.side!==1){lastTap=null;return false;}
+    const carrierPoint=project(carrier.x,carrier.y);
+    const hitRadius=clamp(size.w*.19,60,78);
+    if(Math.hypot(point.x-carrierPoint.x,point.y-carrierPoint.y)>hitRadius){lastTap=null;return false;}
+    const previous=lastTap;
+    const repeatRadius=clamp(size.w*.17,54,70);
+    const isDouble=previous&&time-previous.time<=DOUBLE_TAP_MS&&Math.hypot(point.x-previous.x,point.y-previous.y)<=repeatRadius;
+    lastTap={x:point.x,y:point.y,time};
+    if(!isDouble)return false;
+    lastTap=null;
+    return tryManualTackle();
+  }
+
   canvas.addEventListener('pointerdown',event=>{
     if(appScreen!=='match'||!game||pointer)return;
     event.preventDefault();canvas.setPointerCapture(event.pointerId);
-    const startPoint=canvasPoint(event),world=unproject(startPoint.x,startPoint.y),selected=chooseControlledPlayer(world);
+    const startPoint=canvasPoint(event),world=unproject(startPoint.x,startPoint.y),selected=game.restart?.side===0?game.restart.taker:chooseControlledPlayer(world);
     if(!selected)return;
     game.controlled=selected.index;
-    const scale=project(selected.x,selected.y).scale;
-    pointer={id:event.pointerId,player:selected,origin:{x:selected.x,y:selected.y},start:startPoint,last:startPoint,startTime:event.timeStamp,
-      worldPerPixelX:34/(size.w*.46*scale),worldPerPixelY:CAMERA_SPAN/(size.h-82)};
+    pointer={id:event.pointerId,player:selected,startedWithPossession:game.ball.owner===selected||(game.restart?.side===0&&game.restart.taker===selected),start:startPoint,last:startPoint,
+      driveX:0,driveY:0,driveStrength:0};
+    if(game.tutorial)game.tutorial.userTouched=true;
     game.aim={x:selected.x,y:selected.y,toX:selected.x,toY:selected.y,startScreenX:startPoint.x,startScreenY:startPoint.y,rawScreenX:startPoint.x,rawScreenY:startPoint.y,kind:'move',target:null};
     if(!muted)ensureAudio();
   });
 
   canvas.addEventListener('pointermove',event=>{
     if(!pointer||pointer.id!==event.pointerId||!game)return;event.preventDefault();
-    const point=canvasPoint(event),metrics=gestureMetrics(pointer,point,event.timeStamp),delta={x:metrics.dx,y:metrics.dy};
-    const dragLength=Math.hypot(delta.x,delta.y),scale=Math.min(1,14/(dragLength||1));
-    const p=pointer.player;p.targetX=clamp(pointer.origin.x+delta.x*scale,-33,33);p.targetY=clamp(pointer.origin.y+delta.y*scale,3,102);
-    const intent=game.ball.owner===p?resolveGesture(p,metrics):{kind:'move',target:null};
-    const aimDx=intent.kind==='pass'&&intent.target?intent.dx:intent.kind==='shot'?intent.dx:delta.x*2;
-    const aimDy=intent.kind==='pass'&&intent.target?intent.dy:intent.kind==='shot'?intent.dy:delta.y*2;
-    game.aim={x:p.x,y:p.y,toX:clamp(p.x+aimDx,-33,33),toY:clamp(p.y+aimDy,0,105),startScreenX:pointer.start.x,startScreenY:pointer.start.y,
-      rawScreenX:point.x,rawScreenY:point.y,kind:intent.kind,target:intent.target||null};
-    pointer.last=point;
+    const point=canvasPoint(event),metrics=gestureMetrics(pointer,point),delta={x:metrics.dx,y:metrics.dy};
+    const dragLength=Math.hypot(delta.x,delta.y),p=pointer.player;
+    if(metrics.distance>=.025&&dragLength>.001){
+      pointer.driveX=delta.x/dragLength;pointer.driveY=delta.y/dragLength;
+      pointer.driveStrength=clamp((metrics.distance-.025)/.12,.35,1);
+    }else{
+      pointer.driveX=pointer.driveY=pointer.driveStrength=0;
+    }
+    pointer.last=point;refreshPointerAim();
   });
 
   function finishPointer(event,cancelled=false) {
@@ -717,16 +1016,29 @@
     if(!cancelled)event.preventDefault();
     const p=pointer.player;
     const endPoint=cancelled?pointer.last:canvasPoint(event);
-    const metrics=gestureMetrics(pointer,endPoint,event.timeStamp),{dx,dy}=metrics,length=Math.hypot(dx,dy);
-    if(!cancelled&&game.ball.owner===p){
-      const intent=resolveGesture(p,metrics);
-      if(intent.kind==='shot')kick(p,intent.dx,intent.dy,intent.power,true);
-      else if(intent.kind==='pass')kick(p,intent.dx,intent.dy,intent.power,false);
-    }else if(!cancelled&&length>=1.15){
-      p.targetX=clamp(p.x+dx*1.3,-33,33);p.targetY=clamp(p.y+dy*1.3,1,104);p.manualUntil=game.elapsed+1.2;
+    const metrics=gestureMetrics(pointer,endPoint);
+    if(!cancelled&&pointer.startedWithPossession){
+      if(game.restart?.side===0&&game.restart.taker===p){
+        const intent=resolveGesture(p,metrics,endPoint);
+        if(intent.kind!=='move'){
+          game.restart.queuedTarget=intent.target||null;
+          game.restart.queuedDirection=intent.target?null:{dx:intent.dx,dy:intent.dy};
+        }
+      }else if(game.ball.owner===p){
+        const intent=resolveGesture(p,metrics,endPoint);
+        if(intent.kind==='shot')kick(p,intent.dx,intent.dy,intent.power,true,intent.target);
+        else if(intent.kind==='pass')kick(p,intent.dx,intent.dy,intent.power,false,intent.target);
+      }
+      lastTap=null;
+    }else if(!cancelled&&metrics.distance<TAP_MOVE_LIMIT){
+      handleTapTackle(endPoint,event.timeStamp);
+    }else if(!cancelled){
+      lastTap=null;
     }
     clearPointer();
   }
+
+  tackleButton.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();tryManualTackle();});
 
   canvas.addEventListener('pointerup',event=>finishPointer(event,false));
   canvas.addEventListener('pointercancel',event=>finishPointer(event,true));
@@ -737,6 +1049,13 @@
     if(!audioContext){const AudioCtx=window.AudioContext||window.webkitAudioContext;if(AudioCtx)audioContext=new AudioCtx();}
     if(audioContext?.state==='suspended')audioContext.resume();
   }
+  function playMusic(mode,chooseAgain=false) {
+    const tracks=musicTracks[mode];if(muted||!tracks)return;
+    if(!musicAudio){musicAudio=new Audio();musicAudio.loop=true;musicAudio.volume=.38;musicAudio.preload='auto';}
+    if(chooseAgain||musicMode!==mode){musicAudio.pause();musicAudio.src=tracks[Math.floor(Math.random()*tracks.length)];musicMode=mode;}
+    try{const attempt=musicAudio.play();if(attempt?.catch)attempt.catch(()=>{});}catch{}
+  }
+  function pauseMusic(){musicAudio?.pause();}
   function sfx(type) {
     if(muted)return;ensureAudio();if(!audioContext)return;
     const now=audioContext.currentTime,osc=audioContext.createOscillator(),gain=audioContext.createGain();
@@ -746,16 +1065,31 @@
     osc.connect(gain);gain.connect(audioContext.destination);osc.start(now);osc.stop(now+(type==='goal'?.36:.14));
   }
 
+  tutorialOverlay.addEventListener('click',event=>{
+    const button=event.target.closest('[data-tutorial-action]');if(!button)return;
+    if(button.dataset.tutorialAction==='menu'){pauseMusic();showTutorial(tutorialSession?.pendingMode||mode);}
+    else if(button.dataset.tutorialAction==='pause')pauseGame();
+  });
+
   screen.addEventListener('click',event=>{
     const teamButton=event.target.closest('[data-team]');
     if(teamButton){selectedCountry=Number(teamButton.dataset.team);showTeams(mode);return;}
     const button=event.target.closest('[data-action]');if(!button)return;
     const action=button.dataset.action;
-    if(action==='team')showTeams('practice');
-    else if(action==='cup')showTeams('cup');
+    if(action==='team'){if(!tutorialSeen)showTutorial('practice');else showTeams('practice');}
+    else if(action==='tutorial')showTutorial('practice');
+    else if(action==='tutorial-step')startTutorialExercise(button.dataset.step,'single');
+    else if(action==='tutorial-all'){tutorialSession.flow='all';tutorialSession.stepIndex=0;startTutorialExercise(tutorialPages[0].id,'all');}
+    else if(action==='tutorial-next'){tutorialSession.stepIndex++;startTutorialExercise(tutorialPages[tutorialSession.stepIndex].id,'all');}
+    else if(action==='tutorial-again'){if(game?.tutorial)startTutorialExercise(game.tutorial.stepId,game.tutorial.flow);}
+    else if(action==='tutorial-other')showTutorial(tutorialSession?.pendingMode||'practice');
+    else if(action==='tutorial-menu')showTutorial(tutorialSession?.pendingMode||'practice');
+    else if(action==='tutorial-start-match'||action==='tutorial-skip')enterTutorialDestination();
+    else if(action==='tutorial-home')showHome();
+    else if(action==='cup'){if(!tutorialSeen)showTutorial('cup');else showTeams('cup');}
     else if(action==='home')showHome();
     else if(action==='play')startMatch();
-    else if(action==='resume'){appScreen='match';game.paused=false;screen.innerHTML='';dragHint.classList.remove('hidden');}
+    else if(action==='resume'){appScreen='match';game.paused=false;playMusic(game.tutorial?'menu':'match');screen.innerHTML='';if(game.tutorial){tutorialOverlay.classList.remove('hidden');refreshTutorialOverlay();}else{dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}}
     else if(action==='mute'){muted=!muted;store.set('kkoma-muted',muted);pauseGame();}
     else if(action==='retry')startMatch();
     else if(action==='next'){showTeams('cup');}
