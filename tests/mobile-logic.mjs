@@ -31,8 +31,9 @@ class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src=
 const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,devicePixelRatio:1,ResizeObserver:class{observe(){}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
+vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -642,4 +643,73 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   assert.equal(t.musicState().mode,'menu','tutorial resume restores menu music');
   assert.equal(storage.get('kkoma-cup-round'),'2','tutorial play and pause preserve cup progress');
 }
-console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, and Korea sprite fallback');
+{
+  storage.delete('kkoma-cup-journey-v1');t.setCupRound(2);t.showTeams('cup');t.startMatch();
+  t.scoreGoal(0);const legacyGame=t.game();t.finishMatch();
+  const migrated=JSON.parse(storage.get('kkoma-cup-journey-v1'));
+  assert.equal(migrated.current.startedRound,2,'legacy progress resumes from its saved round');
+  assert.deepEqual(migrated.current.wins.map(result=>result.round),[2],'unknown earlier results are never invented');
+  assert.equal(legacyGame.goalEvents.length,1,'real score events are captured at goal time');
+}
+{
+  t.setCupRound(0);
+  for(let round=0;round<5;round++){
+    t.setCountry(round===1?5:6);
+    t.showTeams('cup');t.startMatch();const game=t.game();
+    if(round===4){t.scoreGoal(0);t.scoreGoal(1);forcedRandom=.9;}
+    else t.scoreGoal(0);
+    game.elapsed=round+10;t.finishMatch();
+    if(round===4){const saved=storage.get('kkoma-cup-journey-v1'),shootout=[...game.shootout];forcedRandom=.2;t.finishMatch();
+      assert.deepEqual([...game.shootout],shootout,'repeated finish must not reroll a shootout');
+      assert.equal(storage.get('kkoma-cup-journey-v1'),saved,'repeated finish must not rewrite cup results');}
+  }
+  const journey=JSON.parse(storage.get('kkoma-cup-journey-v1'));
+  assert.equal(journey.current.startedRound,0,'journey starts from the actual initial round');
+  assert.deepEqual(journey.current.wins.map(result=>result.round),[0,1,2,3,4],'all five won rounds are recorded exactly once');
+  assert.deepEqual(journey.current.wins.map(result=>result.homeId),[6,5,6,6,6],'records preserve team changes between rounds');
+  assert.ok(journey.current.wins.every(result=>result.score.length===2),'every winning result preserves its score');
+  assert.deepEqual(journey.current.wins[4].shootout,[5,4],'penalty result is saved as a score, not shot events');
+  assert.deepEqual(journey.current.wins[4].goalEvents.map(goal=>goal.score),[[1,0],[1,1]],'goals record the score at their actual time');
+  const tampered=JSON.parse(storage.get('kkoma-cup-journey-v1'));tampered.current.wins[4].goalEvents[0].score=[9,0];storage.set('kkoma-cup-journey-v1',JSON.stringify(tampered));
+  assert.equal(t.readCupJourney().current.wins[4].goalEvents.length,0,'inconsistent goal timelines cannot create a false comeback story');
+  const fakeWin=JSON.parse(storage.get('kkoma-cup-journey-v1'));fakeWin.current.wins[0].score=[0,4];storage.set('kkoma-cup-journey-v1',JSON.stringify(fakeWin));
+  assert.equal(t.readCupJourney().current.wins.some(result=>result.round===0),false,'edited local data cannot be treated as a win');
+  storage.set('kkoma-cup-journey-v1',JSON.stringify(journey));
+  assert.equal(storage.get('kkoma-cup-round'),'4','the completed final remains available in the legacy round key');
+  assert.equal(t.appScreen(),'ending','a cup final win opens the ending directly');
+  assert.match(t.screen.innerHTML,/우승 이야기 · 1\/7/,'ending starts on a manually advanced first card');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
+  assert.match(t.screen.innerHTML,/5\s*:/,'recap contains stored match rows');
+  for(let index=2;index<7;index++)listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
+  assert.match(t.screen.innerHTML,/새 월드컵 시작/,'last card offers a new tournament');
+  assert.match(t.screen.innerHTML,/이야기 다시 보기/,'last card offers a recap replay');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-replay'}}:null}});
+  assert.match(t.screen.innerHTML,/우승 이야기 · 1\/7/,'replay starts from the saved first card');
+  const stored=JSON.parse(storage.get('kkoma-cup-journey-v1'));stored.current={startedRound:0,completed:false,wins:[]};storage.set('kkoma-cup-journey-v1',JSON.stringify(stored));
+  assert.equal(t.readCupJourney().lastChampion.wins.length,5,'the previous champion survives a later tournament record');
+  t.showEnding({countryId:8,wins:[],factId:context.window.KKOMA_ENDING_CONTENT.facts[0].id});
+  assert.match(t.screen.innerHTML,/우승 이야기 · 1\/8/,'teams without a local fact add a sourced story card');
+  for(let index=1;index<8;index++)listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'cup-new'}}:null}});
+  assert.equal(storage.get('kkoma-cup-round'),'0','new tournament resets the saved round');
+  assert.deepEqual(JSON.parse(storage.get('kkoma-cup-journey-v1')).current.wins,[],'new tournament clears only current wins');
+  assert.equal(t.readCupJourney().lastChampion.wins.length,5,'new tournament preserves the previous champion album');
+}
+assert.equal(Object.keys(context.window.KKOMA_ENDING_CONTENT.countryStories).length,48,'ending content covers all 48 teams');
+const storyIds=new Set();
+for(const [id,stories] of Object.entries(context.window.KKOMA_ENDING_CONTENT.countryStories)){
+  assert.equal(stories.length,3,`country ${id} has three story slots`);
+  for(let index=0;index<stories.length;index++){const story=stories[index],copy=story.factId?context.window.KKOMA_ENDING_CONTENT.facts.find(fact=>fact.id===story.factId):story;assert.equal(story.id,`country-${id}-${index+1}`);assert.equal(copy?.lines.length,2);assert.equal(storyIds.has(story.id),false);storyIds.add(story.id);}
+}
+assert.equal(context.window.KKOMA_ENDING_CONTENT.facts.length,8,'sourced real-player anecdotes are included');
+  for(const fact of context.window.KKOMA_ENDING_CONTENT.facts)assert.ok(fact.sourceUrl.startsWith('https://')&&fact.eventYear&&fact.verifiedAt,`${fact.id} includes source and date`);
+{
+  t.setCupRound(0);t.showTeams('cup');t.startMatch();const match=t.game();t.scoreGoal(0);t.finishMatch();
+  assert.match(t.cupComparisons([{round:0,homeId:6,awayId:1,score:[1,0],shootout:null,goalEvents:[{elapsed:1,side:0,score:[1,0]}]}])[0],/1:0/,'single-match memory uses its actual score without claiming a comparison');
+  const comeback=t.cupComparisons([{round:0,homeId:6,awayId:1,score:[2,1],shootout:null,goalEvents:[{elapsed:1,side:1,score:[0,1]},{elapsed:2,side:0,score:[1,1]},{elapsed:3,side:0,score:[2,1]}]}]);
+  assert.match(comeback[0],/먼저 골을 내줬지만/,'a recorded lead change is described as a comeback');
+  const penalty=t.cupComparisons([{round:4,homeId:6,awayId:1,score:[0,0],shootout:[4,3],goalEvents:[]}]);
+  assert.ok(penalty.some(line=>/승부차기/.test(line)),'a scoreless penalty win is never described as a high-scoring game');
+  assert.equal(t.game(),match,'ending data does not replace the ended match');
+}
+console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, Korea sprite fallback, and cup journey records');
