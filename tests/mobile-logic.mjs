@@ -24,7 +24,7 @@ const context={document,window:{},Image:ImageStub,devicePixelRatio:1,ResizeObser
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,game:()=>game,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),setCamera:y=>{cameraY=y}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,resetPositions,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,game:()=>game,pointer:()=>pointer,tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -121,6 +121,51 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   id++;stamp+=3000;
 }
 {
+  const {game,p}=setup(0,55,20,50);
+  for(const player of game.players)if(player!==p)player.speed=0;
+  const start=t.project(p.x,p.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+65,start.y,begin+80));
+  for(let n=0;n<300;n++)t.updateMatch(1/60);
+  assert.ok(p.x>20,'a held drag keeps moving past the original 14-unit target');
+  assert.ok(p.x<=33,'held drag stays inside the right field boundary');
+  assert.equal(game.ball.owner,p,'long held drag keeps the ball');
+  listeners.canvas.pointermove(event(start.x-65,start.y,begin+5080));
+  for(let n=0;n<60;n++)t.updateMatch(1/60);
+  assert.ok(p.x<25,'player can immediately reverse direction after reaching the edge');
+  listeners.canvas.pointercancel(event(start.x-65,start.y,begin+6080));
+  id++;stamp+=7000;
+}
+{
+  const {game,p}=setup(0,55,20,50),start=t.project(p.x,p.y);
+  listeners.canvas.pointerdown(event(start.x,start.y,stamp));
+  listeners.canvas.pointermove(event(start.x+35,start.y-15,stamp+50));
+  p.manualUntil=game.elapsed+4;p.tackleUntil=game.elapsed+4;p.kickUntil=game.elapsed+4;
+  t.resetPositions(1);
+  assert.equal(t.pointer(),null,'kickoff resets the active pointer');
+  assert.equal(game.aim,null,'kickoff resets the aim guide');
+  for(const player of game.players){
+    assert.equal(player.manualUntil,0,'kickoff clears manual movement');
+    assert.equal(player.tackleUntil,0,'kickoff clears tackle pressure');
+    assert.equal(player.kickUntil,0,'kickoff clears stale kick animation');
+  }
+  assert.equal(game.ball.owner.side,1,'kickoff still assigns the requested side possession');
+  id++;stamp+=1000;
+}
+{
+  const {game,p}=setup(0,55,20,50),start=t.project(p.x,p.y);
+  for(const player of game.players)if(player!==p)player.speed=0;
+  listeners.canvas.pointerdown(event(start.x,start.y,stamp));
+  listeners.canvas.pointermove(event(start.x,start.y-1000,stamp+50));
+  for(let n=0;n<360;n++)t.updateMatch(1/60);
+  assert.ok(p.y>=1&&p.y<=104,'held drag clamps the player inside the full pitch');
+  listeners.canvas.pointermove(event(start.x,start.y,stamp+6050));
+  for(let n=0;n<60;n++)t.updateMatch(1/60);
+  assert.ok(p.y>1,'player can move away from the goal line');
+  listeners.canvas.pointercancel(event(start.x,start.y,stamp+7050));
+  id++;stamp+=8000;
+}
+{
   const {game,p,mate}=setup(0,55,10,50),start=t.project(p.x,p.y),target=t.project(mate.x,mate.y),begin=stamp;
   const dx=target.x-start.x,dy=target.y-start.y,length=Math.hypot(dx,dy),scale=70/length;
   listeners.canvas.pointerdown(event(start.x,start.y,begin));
@@ -128,9 +173,41 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   for(let n=0;n<72;n++)t.updateMatch(1/60);
   const preview=game.aim;
   assert.equal(preview.kind,'pass','held drag previews release pass even after a long hold');
+  assert.ok(Math.abs(preview.x-p.x)<.01,'pass guide stays anchored to the moving player while finger is held still');
   listeners.canvas.pointerup(event(start.x+dx*scale,start.y+dy*scale,begin+1280));
   assert.equal(game.ball.lastKicker,p,'releasing a held drag performs the pass');
   id++;stamp+=2000;
+}
+{
+  const {game,p,mate}=setup(0,55,8,50),start=t.project(p.x,p.y),target=t.project(mate.x,mate.y),begin=stamp;
+  for(const player of game.players)if(player!==p&&player!==mate)player.speed=0;
+  const dx=target.x-start.x,dy=target.y-start.y;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(target.x,target.y,begin+180));
+  assert.equal(game.aim.kind,'pass','finger over a teammate shows pass');
+  assert.equal(game.aim.target,mate,'the finger position selects its teammate');
+  listeners.canvas.pointerup(event(target.x,target.y,begin+181));
+  assert.equal(game.ball.lastKicker,p,'release kicks to the teammate shown by the guide');
+  assert.equal(game.ball.vx*dx+game.ball.vy*dy>0,true,'the pass travels toward the displayed teammate');
+  id++;stamp+=1000;
+}
+{
+  const {game,p}=setup(0,55,20,50),start=t.project(p.x,p.y),begin=stamp;
+  for(const player of game.players)if(player!==p)player.speed=0;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+27,start.y,begin+3000));
+  listeners.canvas.pointerup(event(start.x+27,start.y,begin+3001));
+  assert.equal(game.ball.lastKicker,p,'a slow held gesture still passes on release');
+  id++;stamp+=1000;
+}
+{
+  const {game,p}=setup(0,55,20,50),start=t.project(p.x,p.y),begin=stamp;
+  for(const player of game.players)if(player!==p)player.speed=0;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x,start.y-100,begin+100));
+  assert.equal(game.aim.kind,'pass','pointing at goal from far away previews a pass');
+  listeners.canvas.pointercancel(event(start.x,start.y-100,begin+110));
+  id++;stamp+=1000;
 }
 {
   const {p,mate,game}=setup(0,55,6,49);game.players[17].x=5;game.players[17].y=57;
@@ -180,16 +257,33 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(game.ball.owner,defender,'manual tackle gives possession to nearest home defender');
 }
 {
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=0;defender.y=55;carrier.x=2.5;carrier.y=55;carrier.nextDecisionAt=1000;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  const start=t.project(defender.x,defender.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+30,start.y,begin+100));
+  assert.equal(t.tryManualTackle(),true,'near tackle gains possession during the defensive drag');
+  listeners.canvas.pointerup(event(start.x+30,start.y,begin+180));
+  assert.equal(game.ball.owner,defender,'releasing a defensive drag keeps the newly won ball');
+  assert.notEqual(game.ball.lastKicker,defender,'defensive release does not immediately kick the won ball');
+  id++;stamp+=1000;
+}
+{
   t.startMatch();const game=t.game(),button=t.tackleButton,homePlayer=game.players[6],awayPlayer=game.players[17];
   game.ball.owner=homePlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),false,'tackle button is subdued when home has the ball');
   assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌을 때 태클');
   assert.equal(t.dragHint.textContent,'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛');
+  assert.equal(t.directionHint.textContent,'↑ 공격　↓ 우리 골대','first-half direction is clear');
   assert.equal(t.tryManualTackle(),false,'tackle press while home has the ball does not steal possession');
   game.ball.owner=awayPlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),true,'tackle button is highlighted when opponent has the ball');
   assert.equal(button.attributes.get('aria-label'),'상대가 공을 가졌어요. 태클 가능');
   assert.equal(t.dragHint.textContent,'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능');
+  game.attackDir=1;t.updateHud();
+  assert.equal(t.directionHint.textContent,'↓ 공격　↑ 우리 골대','second-half direction reverses');
   game.ball.owner=homePlayer;t.updateHud();
   assert.equal(button.classList.contains('ready'),false,'tackle state follows possession changes');
   game.ball.owner=null;t.updateHud();
@@ -203,7 +297,9 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(t.tryManualTackle(),false,'far tackle starts pressure without instant possession');
   assert.equal(game.ball.owner,carrier,'far tackle preserves possession while defender closes in');
   assert.equal(defender.targetX,carrier.x,'far tackle targets the current carrier');
+  const firstExpiry=defender.manualUntil;
   assert.equal(t.tryManualTackle(),false,'repeat press during cooldown is harmless');
+  assert.equal(defender.manualUntil,firstExpiry,'repeat presses do not extend the active tackle');
   const distance=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
   t.updateMatch(.1);t.updateMatch(.1);
   assert.ok(Math.hypot(defender.x-carrier.x,defender.y-carrier.y)<distance,'manual pressure moves toward the carrier');
@@ -217,6 +313,23 @@ for(const [period,dir,y,swipe] of [[1,-1,18,-105],[2,1,87,105]])for(let n=0;n<20
   assert.equal(t.tryManualTackle(),true,'near tackle succeeds immediately');
   for(let n=0;n<10;n++)assert.equal(t.tryManualTackle(),false,`repeat tackle ${n} respects cooldown`);
   assert.equal(game.ball.owner,defender,'rapid repeat presses do not toggle possession');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  defender.x=0;defender.y=55;carrier.x=4;carrier.y=55;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  assert.equal(t.tryManualTackle(),false,'four units away starts a chase instead of stealing instantly');
+  assert.equal(game.ball.owner,carrier,'out-of-contact tackle does not change possession');
+}
+{
+  t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6],keeper=game.players[0];
+  for(const player of game.players.filter(player=>player.side===0)){player.x=-28;player.y=90;}
+  keeper.x=0;keeper.y=55;defender.x=4;defender.y=55;carrier.x=.5;carrier.y=55;
+  game.ball.owner=carrier;game.ball.x=carrier.x;game.ball.y=carrier.y;game.elapsed=2;
+  assert.equal(t.tryManualTackle(),false,'goalkeeper is not selected as a field tackler');
+  assert.equal(defender.targetX,carrier.x,'nearest eligible field player starts the pressure');
+  assert.equal(game.ball.owner,carrier,'field player must reach contact to win possession');
 }
 {
   t.startMatch();const game=t.game(),carrier=game.players[17],defender=game.players[6];
@@ -320,4 +433,71 @@ advance(.4);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'shot returns to run');
 
-console.log('PASS: mobile logic, Korea idle/run/pass/shot sprite mapping, action transitions, and unavailable-image fallback');
+for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
+  t.startMatch();const game=t.game(),keeper=game.players.find(player=>player.side===side&&player.role==='GK');
+  for(const player of game.players)player.speed=0;
+  game.ball.owner=null;game.ball.x=keeper.x;game.ball.y=keeper.y;game.ball.vx=game.ball.vy=0;
+  game.ball.lastKicker=game.players.find(player=>player.side!==side);game.elapsed=2;
+  t.updateMatch(step);
+  assert.equal(game.ball.owner,keeper,`GK ${side} receives the loose ball`);
+  assert.equal(game.restart?.kind,'keeper',`GK ${side} starts a timed distribution`);
+  if(side===1){
+    t.updateHud();
+    assert.equal(t.tackleButton.classList.contains('ready'),false,'tackle is unavailable during the opponent keeper restart');
+    assert.match(t.tackleButton.attributes.get('aria-label'),/골키퍼/,'keeper restart explains the tackle state');
+    assert.equal(t.tryManualTackle(),false,'opponent keeper cannot be pressured during a restart');
+    assert.equal(game.manualTackler,null,'restart tackle input does not leave a stale chase');
+  }
+  for(let n=0;n<stepsBeforeReady;n++)t.updateMatch(step);
+  assert.equal(game.ball.owner,keeper,`GK ${side} keeps the ball until one active second`);
+  assert.equal(game.ball.lastKicker,null,`GK ${side} does not release early`);
+  t.updateMatch(step);t.updateMatch(step);
+  assert.equal(game.ball.lastKicker,keeper,`GK ${side} releases once after one active second`);
+  assert.equal(game.restart,null,`GK ${side} clears the restart state after release`);
+}
+{
+  t.startMatch();const game=t.game(),keeper=game.players[0],mate=game.players[1];
+  for(const player of game.players)player.speed=0;
+  mate.x=20;
+  game.ball.owner=null;game.ball.x=keeper.x;game.ball.y=keeper.y;game.ball.vx=game.ball.vy=0;
+  game.ball.lastKicker=game.players[17];game.elapsed=2;t.updateMatch(1/60);
+  const restartReadyAt=game.restart.readyAt;
+  for(let n=0;n<32;n++)t.updateMatch(1/60);
+  const start=t.project(keeper.x,keeper.y),target=t.project(mate.x,mate.y),begin=stamp++;
+  assert.ok(start.y>70&&start.y<800,'keeper is visible during the distribution window');
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(target.x,target.y,begin+100));
+  assert.equal(game.aim.target,mate,'keeper restart guide highlights the chosen receiver');
+  listeners.canvas.pointerup(event(target.x,target.y,begin+110));id++;
+  assert.equal(game.restart.queuedTarget,mate,'release queues the displayed keeper pass');
+  for(let n=0;n<12;n++)t.updateMatch(1/60);
+  t.pauseGame();const pausedAt=game.elapsed;
+  for(let n=0;n<120;n++)t.updateMatch(1/60);
+  assert.equal(game.elapsed,pausedAt,'the one-second restart timer stops while paused');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
+  for(let n=0;n<14;n++)t.updateMatch(1/60);
+  assert.equal(game.ball.lastKicker,null,'resume keeps the remaining restart time');
+  for(let n=0;n<4;n++)t.updateMatch(1/60);
+  assert.ok(keeper.actionStartedAt>=restartReadyAt,'queued pass launches after one active second');
+  for(let n=0;n<72;n++)t.updateMatch(1/60);
+  assert.equal(game.ball.owner,mate,'queued pass reaches the selected teammate');
+  assert.equal(game.restart,null,'queued keeper pass clears restart state');
+  stamp+=1000;
+}
+{
+  for(const [attackDir,end] of [[-1,0],[1,105]]){
+    t.startMatch();const game=t.game();game.attackDir=attackDir;game.period=attackDir<0?1:2;
+    for(const player of game.players)player.speed=0;
+    game.ball.owner=null;game.ball.x=20;game.ball.y=end===0?-.1:105.1;game.ball.vx=0;game.ball.vy=end===0?-1:1;game.lastTouch=0;
+    t.updateMatch(1/60);
+    assert.equal(game.restart?.kind,'goalKick',`missed goal line ${end} starts a goal kick`);
+    assert.equal(game.restart.side,1,`defending team at goal line ${end} takes the restart`);
+    assert.equal(game.ball.vy,0,'the ball stays still while the goal kick is prepared');
+    for(let n=0;n<58;n++)t.updateMatch(1/60);
+    assert.equal(game.ball.lastKicker,null,'goal kick waits for its preparation second');
+    t.updateMatch(1/60);t.updateMatch(1/60);t.updateMatch(1/60);
+    assert.equal(game.ball.lastKicker.role,'GK',`goal kick at ${end} uses the goalkeeper distribution`);
+    assert.equal(game.restart,null,'goal kick clears its restart state after release');
+  }
+}
+console.log('PASS: mobile controls, tackling, goalkeeper restarts, and Korea sprite fallback');

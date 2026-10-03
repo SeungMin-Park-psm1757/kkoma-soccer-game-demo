@@ -6,6 +6,8 @@ const viewports=[[360,800],[390,844],[412,915]];
 async function openKorea(width,height){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
   await page.goto('http://127.0.0.1:8000',{waitUntil:'networkidle'});
+  await page.evaluate(()=>localStorage.setItem('kkoma-tutorial-done','true'));
+  await page.reload({waitUntil:'networkidle'});
   await page.click('[data-action="team"]');
   await page.click('[data-team="6"]');
   await page.click('[data-action="play"]');
@@ -49,7 +51,7 @@ for(const [width,height] of viewports){
     await page.mouse.move(start.x,start.y-105,{steps:3});
     await page.mouse.up();
     await page.waitForTimeout(90);
-    await page.screenshot({path:`visual-qa/korea-shot-${width}x${height}.png`,fullPage:true});
+    await page.screenshot({path:`visual-qa/korea-forward-intent-${width}x${height}.png`,fullPage:true});
     await page.close();
   }
 }
