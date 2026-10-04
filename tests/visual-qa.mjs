@@ -65,13 +65,13 @@ if(process.argv.includes('--ending-only')){
     await assertTouchLayout(page,width,height,'ending first');
     await page.screenshot({path:`visual-qa/ending-first-${width}x${height}.png`,fullPage:true});
 
-    await page.click('[data-action="ending-next"]');
+    await page.waitForFunction(()=>document.querySelector('.ending-count')?.textContent.includes('2/7'),null,{timeout:8000});
     if(await page.locator('.ending-results li').count()!==5)throw new Error(`ending recap does not show five wins at ${width}x${height}`);
     await assertFits(page,width,height,'ending recap');
     await assertTouchLayout(page,width,height,'ending recap');
     await page.screenshot({path:`visual-qa/ending-recap-${width}x${height}.png`,fullPage:true});
 
-    while(await page.locator('[data-action="ending-next"]').count())await page.click('[data-action="ending-next"]');
+    await page.click('[data-action="ending-skip"]');
     if(!await page.locator('[data-action="cup-new"]').count()||!await page.locator('[data-action="ending-replay"]').count())throw new Error(`ending final actions missing at ${width}x${height}`);
     await assertFits(page,width,height,'ending final');
     await assertTouchLayout(page,width,height,'ending final');

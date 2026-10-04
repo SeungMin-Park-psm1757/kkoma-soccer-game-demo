@@ -79,6 +79,7 @@ body { min-height:100dvh; overscroll-behavior:none; }
 .tutorial-prompt { align-self:center; max-width:90%; margin:0 0 8px; padding:10px 16px; border-radius:999px; color:#173411; background:#d7ff67; box-shadow:0 4px 0 #5e9514; text-align:center; font-size:16px; font-weight:900; }
 .tutorial-overlay.tackle .tutorial-prompt { margin-bottom:142px; }
 .ending-screen { overflow:auto; }
+.ending-skip { position:absolute; z-index:4; top:max(8px,env(safe-area-inset-top)); right:12px; min-width:66px; min-height:44px; padding:6px 10px; border:1px solid #ffffff80; border-radius:14px; color:#fff8dc; background:#062c25dd; font:700 13px 'Malgun Gothic','Noto Sans CJK KR',system-ui,sans-serif; }
 .ending-card { width:min(100%,430px); max-height:100%; overflow:auto; padding:clamp(16px,4vw,26px); }
 .ending-count { color:#d9ff71; font-size:14px; font-weight:900; }
 .ending-picture { display:grid; place-items:center; width:clamp(72px,18vw,110px); aspect-ratio:1; margin:8px auto; border:3px solid #ffffff80; border-radius:28px; background:linear-gradient(145deg,#d8ff6840,#ffca3530); font-size:clamp(42px,11vw,66px); }
