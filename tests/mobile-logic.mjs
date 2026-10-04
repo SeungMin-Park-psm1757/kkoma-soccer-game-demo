@@ -10,6 +10,13 @@ const element=()=>{
 };
 const drawImages=[];
 const audioInstances=[];
+let nextTimerId=0;
+const pendingTimers=new Map();
+function advanceTimer(delay){
+  const entry=[...pendingTimers].find(([,timer])=>timer.delay===delay);
+  assert.ok(entry,`ending timer ${delay}ms is scheduled`);
+  pendingTimers.delete(entry[0]);entry[1].callback();
+}
 class AudioStub{
   constructor(){this.src='';this.loop=false;this.volume=1;this.preload='';this.paused=true;this.currentTime=0;audioInstances.push(this);}
   play(){this.paused=false;return Promise.resolve();}
@@ -30,10 +37,10 @@ const spriteManifest=JSON.parse(readFileSync(new URL('../assets/players/manifest
 class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src='';}}
 const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,devicePixelRatio:1,ResizeObserver:class{observe(){}},
   localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
-  requestAnimationFrame(){},setTimeout(){return 1;},clearTimeout(){},fetch:async()=>({json:async()=>spriteManifest})};
+  requestAnimationFrame(){},setTimeout(callback,delay){const id=++nextTimerId;pendingTimers.set(id,{callback,delay});return id;},clearTimeout(id){pendingTimers.delete(id);},advanceTimer,fetch:async()=>({json:async()=>spriteManifest})};
 vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -677,19 +684,26 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   storage.set('kkoma-cup-journey-v1',JSON.stringify(journey));
   assert.equal(storage.get('kkoma-cup-round'),'4','the completed final remains available in the legacy round key');
   assert.equal(t.appScreen(),'ending','a cup final win opens the ending directly');
-  assert.match(t.screen.innerHTML,/우승 이야기 · 1\/7/,'ending starts on a manually advanced first card');
-  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
-  assert.match(t.screen.innerHTML,/5\s*:/,'recap contains stored match rows');
-  for(let index=2;index<7;index++)listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
-  assert.match(t.screen.innerHTML,/새 월드컵 시작/,'last card offers a new tournament');
+  assert.match(t.screen.innerHTML,/우승 이야기 · 1\/7/,'championship opens its ending automatically');
+  assert.match(t.screen.innerHTML,/data-action="ending-skip"/,'the top-level skip control is available');
+  t.advanceTimer(4800);
+  assert.match(t.screen.innerHTML,/우승 이야기 · 2\/7/,'ending advances automatically');
+  assert.equal((t.screen.innerHTML.match(/<li>/g)||[]).length,5,'the automatically shown recap includes all stored match rows');
+  t.advanceTimer(7000);
+  for(let index=0;index<4;index++)t.advanceTimer(4800);
+  assert.match(t.screen.innerHTML,/새 월드컵 시작/,'automatic ending reaches its menu choices');
   assert.match(t.screen.innerHTML,/이야기 다시 보기/,'last card offers a recap replay');
+  assert.doesNotMatch(t.screen.innerHTML,/data-action="ending-skip"/,'skip is hidden on the ending menu card');
   listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-replay'}}:null}});
   assert.match(t.screen.innerHTML,/우승 이야기 · 1\/7/,'replay starts from the saved first card');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-skip'}}:null}});
+  assert.match(t.screen.innerHTML,/새 월드컵 시작/,'skip opens menu choices immediately');
   const stored=JSON.parse(storage.get('kkoma-cup-journey-v1'));stored.current={startedRound:0,completed:false,wins:[]};storage.set('kkoma-cup-journey-v1',JSON.stringify(stored));
   assert.equal(t.readCupJourney().lastChampion.wins.length,5,'the previous champion survives a later tournament record');
   t.showEnding({countryId:8,wins:[],factId:context.window.KKOMA_ENDING_CONTENT.facts[0].id});
   assert.match(t.screen.innerHTML,/우승 이야기 · 1\/8/,'teams without a local fact add a sourced story card');
-  for(let index=1;index<8;index++)listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'ending-next'}}:null}});
+  for(let index=0;index<7;index++)t.advanceTimer(4800);
+  assert.match(t.screen.innerHTML,/새 월드컵 시작/,'an ending with an extra sourced story also auto-completes');
   listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'cup-new'}}:null}});
   assert.equal(storage.get('kkoma-cup-round'),'0','new tournament resets the saved round');
   assert.deepEqual(JSON.parse(storage.get('kkoma-cup-journey-v1')).current.wins,[],'new tournament clears only current wins');

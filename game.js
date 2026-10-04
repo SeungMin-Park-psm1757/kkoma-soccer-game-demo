@@ -202,7 +202,7 @@
     return lines.slice(0,2);
   }
 
-  let endingSession=null;
+  let endingSession=null,endingTimer=null;
   function showEnding(snapshot,index=0) {
     const content=window.KKOMA_ENDING_CONTENT,team=countries[snapshot.countryId];
     if(!team)return showHome();
@@ -226,6 +226,7 @@
 
   function renderEnding() {
     if(!endingSession)return;
+    if(endingTimer!==null){clearTimeout(endingTimer);endingTimer=null;}
     const {cards,index}=endingSession,card=cards[index],wins=card.wins||[];
     const rows=wins.map(result=>`<li><span>${roundNames[result.round]} · ${countries[result.homeId].flag} ${countries[result.homeId].name} vs ${countries[result.awayId].flag} ${countries[result.awayId].name}</span><strong>${result.score[0]} : ${result.score[1]}${result.shootout?` · 승부차기 ${result.shootout[0]}:${result.shootout[1]}`:''}</strong></li>`).join('');
     const fact=card.fact?`<details class="ending-source"><summary>이야기 출처 · ${card.fact.eventYear}</summary><a href="${card.fact.sourceUrl}" target="_blank" rel="noopener noreferrer">${card.fact.sourceTitle} 원문 보기</a></details>`:'';
@@ -233,7 +234,11 @@
     const image=typeof card.image==='string'&&card.image.startsWith('assets/ending/')&&!card.image.includes('..')?`<img class="ending-art" data-ending-image data-fallback="${card.emoji}" src="${card.image}" alt="${card.imageAlt||''}">`:card.emoji;
     const last=index===cards.length-1;
     screen.className='screen ending-screen';
-    screen.innerHTML=`<article class="panel ending-card${index===0?' celebrate':''}"><div class="ending-count" aria-live="polite">우승 이야기 · ${index+1}/${cards.length}</div><div class="ending-picture"${card.image?'':' aria-hidden="true"'}>${image}</div><h2 class="selection-title">${card.title}</h2>${rows?`<ol class="ending-results">${rows}</ol>`:''}<div class="ending-message">${lines}</div>${fact}<div class="ending-actions">${index?'<button class="game-button ghost" data-action="ending-prev">◀ 이전</button>':''}${last?'<button class="game-button" data-action="cup-new">새 월드컵 시작</button><button class="game-button secondary" data-action="ending-replay">이야기 다시 보기</button><button class="game-button ghost" data-action="ending-home">메뉴로</button>':'<button class="game-button" data-action="ending-next">다음 ▶</button>'}</div></article>`;
+    screen.innerHTML=`${last?'':'<button class="ending-skip" data-action="ending-skip">건너뛰기</button>'}<article class="panel ending-card${index===0?' celebrate':''}"><div class="ending-count" aria-live="polite">우승 이야기 · ${index+1}/${cards.length}</div><div class="ending-picture"${card.image?'':' aria-hidden="true"'}>${image}</div><h2 class="selection-title">${card.title}</h2>${rows?`<ol class="ending-results">${rows}</ol>`:''}<div class="ending-message">${lines}</div>${fact}<div class="ending-actions">${last?'<button class="game-button" data-action="cup-new">새 월드컵 시작</button><button class="game-button secondary" data-action="ending-replay">이야기 다시 보기</button><button class="game-button ghost" data-action="ending-home">메뉴로</button>':''}</div></article>`;
+    if(!last)endingTimer=setTimeout(()=>{
+      endingTimer=null;
+      if(appScreen==='ending'&&endingSession){endingSession.index++;renderEnding();}
+    },wins.length?7000:4800);
   }
 
   screen.addEventListener('error',event=>{
@@ -1208,8 +1213,7 @@
     else if(action==='tutorial-start-match'||action==='tutorial-skip')enterTutorialDestination();
     else if(action==='tutorial-home')showHome();
     else if(action==='cup'){if(cupJourney?.current.completed&&cupJourney.lastChampion)showEnding(cupJourney.lastChampion);else if(!tutorialSeen)showTutorial('cup');else showTeams('cup');}
-    else if(action==='ending-next'&&appScreen==='ending'){endingSession.index=Math.min(endingSession.index+1,endingSession.cards.length-1);renderEnding();}
-    else if(action==='ending-prev'&&appScreen==='ending'){endingSession.index=Math.max(0,endingSession.index-1);renderEnding();}
+    else if(action==='ending-skip'&&appScreen==='ending'&&endingSession){endingSession.index=endingSession.cards.length-1;renderEnding();}
     else if(action==='ending-replay'&&cupJourney?.lastChampion)showEnding(cupJourney.lastChampion);
     else if(action==='cup-new'){cupRound=0;store.set('kkoma-cup-round',cupRound);cupJourney={version:1,current:{startedRound:0,completed:false,wins:[]},lastChampion:cupJourney?.lastChampion||null};store.set(CUP_JOURNEY_KEY,cupJourney);showTeams('cup');}
     else if(action==='ending-home')showHome();
