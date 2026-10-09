@@ -45,6 +45,8 @@ vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
 assert.equal(typeof t.playMusic,'function','music playback is wired into the game');
+assert.ok(existsSync(new URL('../assets/ui/home-player-v1.webp',import.meta.url)),'generated home key visual exists');
+t.showHome();assert.match(t.screen.innerHTML,/data-home-mascot[^>]*assets\/ui\/home-player-v1\.webp/,'home screen uses the generated character key visual');
 // Reproduction: the old tutorial only showed cards and could not launch focused practice.
 t.showTutorial();
 for(const step of ['move','pass','shot','tackle'])assert.match(t.screen.innerHTML,new RegExp(`data-action="tutorial-step"[^>]*data-step="${step}"`),`${step} practice is selectable`);
@@ -437,6 +439,9 @@ assert.equal(t.playerSprites.korea.kick.field.length,3,'three Korea pass sprites
 assert.equal(t.playerSprites.korea.shot.field.length,3,'three Korea shot sprites load');
 assert.equal(t.playerSprites.korea.kick.goalkeeper,null,'Korea goalkeeper pass uses Canvas fallback');
 assert.equal(t.playerSprites.korea.shot.goalkeeper,null,'Korea goalkeeper shot uses Canvas fallback');
+assert.equal(t.playerSprites.korea.premium.field.idle.src,'assets/players/korea/ai-v1/idle.webp','generated idle art is loaded');
+assert.equal(t.playerSprites.korea.premium.field.tackle.src,'assets/players/korea/ai-v1/tackle.webp','generated tackle art is loaded');
+assert.equal(t.playerSprites.korea.premium.goalkeeper.save.src,'assets/players/korea/ai-v1/goalkeeper-save.webp','generated keeper save art is loaded');
 t.startMatch();
 const spriteGame=t.game(),fieldPlayer=spriteGame.players.find(player=>player.side===0&&player.role!=='GK');
 assert.equal(spriteGame.home.name,'대한민국','sprite match is Korea home');
@@ -444,22 +449,38 @@ assert.equal(spriteGame.home.spriteKey,'korea','Korea team resolves generic spri
 assert.equal(t.countries.filter(country=>country.spriteKey).length,1,'only teams with production sprites opt in');
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded idle sprite is rendered');
-assert.equal(drawImages[0][0].src,`assets/players/korea/idle-${fieldPlayer.index%3+1}.webp`);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/idle.webp','generated idle art is used in match');
+t.playerSprites.korea.premium.field.idle.complete=false;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages[0][0].src,`assets/players/korea/idle-${fieldPlayer.index%3+1}.webp`,'legacy sprite remains the generated-art fallback');
 t.playerSprites.korea.idle.field[fieldPlayer.index%3].complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages.length,0,'Canvas fallback is used while sprite is unavailable');
+assert.equal(drawImages.length,0,'Canvas fallback remains when generated and legacy sprites fail');
+t.playerSprites.korea.idle.field[fieldPlayer.index%3].complete=true;
+t.playerSprites.korea.premium.field.idle.complete=true;
 fieldPlayer.shotUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded shot sprite is rendered');
-assert.equal(drawImages[0][0].src,`assets/players/korea/shot-${fieldPlayer.index%3+1}.webp`);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/shot.webp');
 fieldPlayer.shotUntil=0;fieldPlayer.kickUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded pass sprite is rendered');
-assert.equal(drawImages[0][0].src,`assets/players/korea/pass-${fieldPlayer.index%3+1}.webp`);
-t.playerSprites.korea.kick.field[fieldPlayer.index%3].complete=false;
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/pass.webp');
+t.playerSprites.korea.premium.field.pass.complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages.length,0,'Canvas fallback is used when pass sprite fails to load');
-t.playerSprites.korea.kick.field[fieldPlayer.index%3].complete=true;
+assert.equal(drawImages[0][0].src,`assets/players/korea/pass-${fieldPlayer.index%3+1}.webp`,'legacy pass art remains the premium fallback');
+t.playerSprites.korea.premium.field.pass.complete=true;
+
+fieldPlayer.kickUntil=0;fieldPlayer.tackleUntil=spriteGame.elapsed+1;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/tackle.webp','generated tackle art is selected during a tackle');
+fieldPlayer.tackleUntil=0;
+const keeper=spriteGame.players.find(player=>player.side===0&&player.role==='GK');
+drawImages.length=0;t.drawPlayer(keeper);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/goalkeeper-idle.webp','generated goalkeeper idle art is used');
+keeper.saveUntil=spriteGame.elapsed+1;
+drawImages.length=0;t.drawPlayer(keeper);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/goalkeeper-save.webp','generated goalkeeper save art is selected');
 
 // Action states must yield back to locomotion without sticking.
 fieldPlayer.runUntil=spriteGame.elapsed+2;
@@ -467,19 +488,19 @@ fieldPlayer.actionStartedAt=spriteGame.elapsed;
 fieldPlayer.kickUntil=spriteGame.elapsed+.26;
 fieldPlayer.shotUntil=0;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.match(drawImages[0][0].src,/\/pass-\d\.webp$/,'pass state takes priority over run');
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/pass.webp','pass state takes priority over run');
 advance(.3);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'pass returns to run');
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/run.webp','pass returns to run');
 
 fieldPlayer.actionStartedAt=spriteGame.elapsed;
 fieldPlayer.kickUntil=spriteGame.elapsed+.36;
 fieldPlayer.shotUntil=spriteGame.elapsed+.36;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.match(drawImages[0][0].src,/\/shot-\d\.webp$/,'shot state takes priority over run');
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/shot.webp','shot state takes priority over run');
 advance(.4);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.match(drawImages[0][0].src,/\/run-\d\.webp$/,'shot returns to run');
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/run.webp','shot returns to run');
 
 for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   t.startMatch();const game=t.game(),keeper=game.players.find(player=>player.side===side&&player.role==='GK');
@@ -502,6 +523,9 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   t.updateMatch(step);t.updateMatch(step);
   assert.equal(game.ball.lastKicker,keeper,`GK ${side} releases once after one active second`);
   assert.equal(game.restart,null,`GK ${side} clears the restart state after release`);
+  game.ball.owner=null;game.ball.x=keeper.x;game.ball.y=keeper.y;game.ball.vx=0;game.ball.vy=side===0?-14:14;game.elapsed+=1;
+  t.updateMatch(step);
+  assert.ok(keeper.saveUntil>game.elapsed,`GK ${side} gets a brief visual save pose after catching a moving ball`);
 }
 {
   t.startMatch();const game=t.game(),keeper=game.players[0],mate=game.players[1];

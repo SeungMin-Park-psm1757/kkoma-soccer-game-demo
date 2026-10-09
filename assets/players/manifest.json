@@ -31,6 +31,19 @@
         "korea/shot-3.webp"
       ],
       "goalkeeper": null
+    },
+    "premium": {
+      "field": {
+        "idle": "korea/ai-v1/idle.webp",
+        "run": "korea/ai-v1/run.webp",
+        "pass": "korea/ai-v1/pass.webp",
+        "shot": "korea/ai-v1/shot.webp",
+        "tackle": "korea/ai-v1/tackle.webp"
+      },
+      "goalkeeper": {
+        "idle": "korea/ai-v1/goalkeeper-idle.webp",
+        "save": "korea/ai-v1/goalkeeper-save.webp"
+      }
     }
   }
 }

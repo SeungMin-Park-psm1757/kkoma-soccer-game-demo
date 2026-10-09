@@ -1,6 +1,8 @@
 # 그림 자산 위치
 
 - `players/`: 투명 WebP 선수 스프라이트. `manifest.json`은 국가·상태별 `field` 선수 배열과 `goalkeeper` 파일을 지정한다. 프레임은 128×136px의 공통 캔버스와 발 기준선을 사용한다. 파일이 없거나 로드되지 않으면 기존 Canvas 선수가 표시된다.
+- `players/source/`: 생성된 캐릭터의 고해상도 투명 PNG 원본. 기존 캐릭터 원본도 보존한다.
+- `players/korea/ai-v1/`: GPT 이미지 생성으로 만든 대한민국 대표 선수의 공통 128×136px WebP 동작 스프라이트. manifest의 `premium` 경로를 먼저 사용하며, 로딩 실패 시 기존 대한민국 WebP, 그 다음 Canvas fallback으로 돌아간다.
 - `kits/`: 향후 국가별 패턴 또는 마스크. 현재 색상은 `game.js`의 국가 데이터가 그린다.
 - `stadium/`: 향후 경기장 배경. 게임 좌표와 충돌 판정은 `game.js`의 `project`/`unproject`와 분리한다.
 - `ui/`: 향후 버튼·아이콘.
@@ -9,8 +11,11 @@
 
 - `players/character-sheet-korea-v2.png`: 투명 RGBA, 1223×1286, 4열(기본·빠른 선수·힘 있는 선수·골키퍼) × 4행(idle·run·pass kick·power shot). 각 칸의 캐릭터와 공은 칸 경계 안에 들어간다. 대한민국 색상에서 영감을 받은 가상 유니폼 샘플이다.
 - `stadium/stadium-concept-portrait-v1.png`: 941×1672, 약 9:16 세로 경기장 콘셉트. 선수·실제 플레이 공·UI는 포함하지 않는다.
+- `ui/home-player-v1.webp`: AI 생성 선수 idle 원본에서 만든 투명 메뉴 키비주얼. 로드에 실패하면 기존 축구공 SVG가 표시된다.
 - 재생성용 최종 프롬프트는 [`ART_PROMPTS.md`](ART_PROMPTS.md)에 보관한다.
 
 대한민국 홈팀의 `idle`/`run` 프레임은 개별 WebP로 추출해 `players/manifest.json`에 등록했다. 기본·빠른·힘 있는 필드 선수와 골키퍼 모두 전용 프레임을 갖는다. 패스/킥 및 슛 원본은 공이 발·다리 윤곽과 겹쳐 안전하게 분리할 수 없어 등록하지 않았다. 따라서 해당 상태와 이미지 로딩 실패 시 기존 Canvas 선수가 표시된다. 원본 시트는 보존한다. 이 한국 유니폼이 포함된 자산은 대한민국 홈팀 시각 샘플이며, 다른 국가에는 기존 국가별 kit 렌더링이 유지된다. 경기장 이미지는 아직 렌더러에 연결하지 않았다.
+
+AI 아트 v1은 대표 선수 idle/run/pass/shot/tackle과 goalkeeper idle/save 포즈로 구성한다. 각 고해상도 원본 PNG를 `players/source/`에 보존하고, 투명 WebP를 공통 프레임에 정렬한다. 대한민국 선택 시 생성된 스프라이트를 우선 사용하고 기존 프레임은 로딩 fallback으로 남긴다. 경기장 원본은 현재 플레이 좌표와 일치하지 않아 계속 미적용 상태다.
 
 추가 애니메이션 상태 `shoot`, `receive`, `celebrate`는 그림이 준비되면 같은 프레임 규격으로 확장한다. 실제 협회 엠블럼과 스포츠 브랜드 로고는 사용하지 않는다.
