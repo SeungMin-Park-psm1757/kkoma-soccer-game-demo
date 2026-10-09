@@ -40,7 +40,7 @@ const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,de
   requestAnimationFrame(){},setTimeout(callback,delay){const id=++nextTimerId;pendingTimers.set(id,{callback,delay});return id;},clearTimeout(id){pendingTimers.delete(id);},advanceTimer,fetch:async()=>({json:async()=>spriteManifest})};
 vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -96,7 +96,7 @@ let stamp=1000,id=1;
 function setup(x,y,mateX,mateY,attackDir=-1){
   t.startMatch();const game=t.game(),p=game.players[6],mate=game.players[9];
   game.attackDir=attackDir;game.period=attackDir===-1?1:2;
-  for(const player of game.players){player.x=player.side===0?32:-32;player.y=player.side===0?96:52;player.homeX=player.x;player.homeY=player.y;}
+  for(const player of game.players){player.x=player.side===0?32:-32;player.y=player.side===0?96:(attackDir===-1?15:90);player.homeX=player.x;player.homeY=player.y;}
   p.x=x;p.y=y;mate.x=mateX;mate.y=mateY;
   game.ball.owner=p;game.ball.x=x;game.ball.y=y;game.ball.vx=game.ball.vy=0;
   t.setCamera(y);return {game,p,mate};
@@ -744,5 +744,87 @@ assert.equal(context.window.KKOMA_ENDING_CONTENT.facts.length,8,'sourced real-pl
     t.setCupRound(0);t.showTeams('cup');t.startMatch();t.scoreGoal(0);t.finishMatch();
     assert.equal(t.appScreen(),'result','storage write failure does not crash match completion');
   }finally{storage.set=originalSet;}
+}
+
+{
+  t.startMatch();
+  const game=t.game(),away=game.players.find(p=>p.side===1&&p.role==='FW');
+  const team=game.away;
+  assert.ok(Math.abs(away.speed/(6.7*team.rating.speed)-1.05)<1e-10,'AI outfield speed is raised exactly 5%');
+  assert.ok(Math.abs(game.players[9].speed/(6.7*game.home.rating.speed)-1)<1e-10,'home controls keep original player speed');
+}
+for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[1,40,95,82,66]]){
+  {
+    const {game,p,mate}=setup(0,carrierY,5,receiverY,direction);
+    for(const defender of game.players.filter(player=>player.side===1))defender.y=defenseY;
+    assert.equal(t.isOffsidePosition(mate,p.y),true,'offside in the opponents half beyond ball and second-last defender');
+    t.kick(p,mate.x-p.x,mate.y-p.y,.7,false,mate);
+    assert.equal(game.offsidePass.players.has(mate),true,'offside position is snapshotted when ball is played');
+    game.ball.x=mate.x;game.ball.y=mate.y;game.ball.vx=game.ball.vy=0;
+    t.updateMatch(1/60);
+    assert.equal(game.restart?.kind,'offside','the whistle occurs only when flagged receiver touches the ball');
+    assert.equal(game.restart.side,1,'defending side is awarded an indirect restart');
+    assert.equal(game.score[0],0,'offside does not count as a goal');
+    advance(1);
+    assert.equal(game.restart,null,'offside free kick is restarted automatically');
+  }
+  {
+    const {game,p,mate}=setup(0,carrierY,5,onsideY,direction);
+    for(const defender of game.players.filter(player=>player.side===1))defender.y=defenseY;
+    assert.equal(t.isOffsidePosition(mate,p.y),false,'receiver behind second-last defender is onside');
+    t.kick(p,mate.x-p.x,mate.y-p.y,.7,false,mate);
+    game.ball.x=mate.x;game.ball.y=mate.y;game.ball.vx=game.ball.vy=0;
+    t.updateMatch(1/60);
+    assert.equal(game.ball.owner,mate,'onside receiver keeps possession');
+    assert.equal(game.restart,null,'onside play does not trigger whistle');
+  }
+}
+{
+  const {game,p,mate}=setup(0,61,6,50,-1);
+  for(const defender of game.players.filter(player=>player.side===1))defender.y=22;
+  mate.y=10;assert.equal(t.isOffsidePosition(mate,p.y),true);
+  t.kick(p,mate.x-p.x,mate.y-p.y,.7,false,mate);
+  assert.ok(game.offsidePass,'pass records offside suspects');
+  const opponent=game.players[17];t.setCamera(25);
+  game.ball.x=opponent.x;game.ball.y=opponent.y;game.ball.vx=game.ball.vy=0;
+  t.updateMatch(1/60);
+  assert.equal(game.ball.owner,opponent,'opponent controlled interception is allowed');
+  assert.equal(game.offsidePass,null,'opponent possession clears the old offside snapshot');
+}
+{
+  const game=(()=>{t.startMatch();return t.game();})();
+  assert.equal(t.beginPenaltyKick(0),true,'home penalty kick is set up');
+  assert.equal(game.penalty.phase,'setup');
+  assert.equal(game.ball.owner,game.penalty.shooter);
+  assert.equal(t.tackleButton.classList.contains('hidden'),true,'tackle button is hidden during a penalty');
+  const start=t.project(game.penalty.shooter.x,game.penalty.shooter.y),begin=stamp;
+  forcedRandom=0; // goalkeeper chooses left, shot is aimed right.
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+95,start.y-100,begin+100));
+  assert.equal(game.aim.kind,'shot','penalty gesture displays a shot guide');
+  listeners.canvas.pointerup(event(start.x+95,start.y-100,begin+110));id++;stamp+=1000;
+  assert.equal(game.penalty.phase,'flight','drag release starts a penalty shot');
+  advance(.8);
+  assert.equal(game.score[0],1,'on-target penalty kick can score');
+  assert.equal(game.penalty,null,'goal clears penalty mode before kickoff');
+  forcedRandom=null;
+}
+{
+  t.startMatch();const game=t.game();
+  t.beginPenaltyKick(1);assert.equal(game.penalty.side,1);
+  forcedRandom=.5; // goalkeeper dives to the shot's target.
+  advance(1.5);
+  assert.equal(game.penalty,null,'AI penalty is shot automatically and resolves');
+  assert.equal(game.score[1],0,'AI penalty can be saved');
+  forcedRandom=null;
+}
+{
+  t.startMatch();const game=t.game(),p=game.players[6],defender=game.players[17];
+  for(const other of game.players.filter(player=>player.side===1)){other.x=30;other.y=70;}
+  p.x=0;p.y=11;defender.x=1;defender.y=11;
+  game.ball.owner=p;game.ball.x=p.x;game.ball.y=p.y;game.elapsed=20;
+  forcedRandom=0;t.updateMatch(.05);
+  assert.equal(game.penalty?.side,0,'an illegal defensive challenge inside the area gives the attacker a penalty');
+  forcedRandom=null;
 }
 console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, Korea sprite fallback, and cup journey records');
