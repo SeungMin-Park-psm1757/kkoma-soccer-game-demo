@@ -1,4 +1,27 @@
 {
+  "commonArt": {
+    "uniformMask": "national-kit-mask-v1.png",
+    "maskRows": {
+      "idle": 0,
+      "run": 1,
+      "pass": 2,
+      "shot": 3,
+      "tackle": 4,
+      "goalkeeper-idle": 5,
+      "goalkeeper-save": 6
+    },
+    "field": {
+      "idle": "korea/ai-v1/idle.webp",
+      "run": "korea/ai-v1/run.webp",
+      "pass": "korea/ai-v1/pass.webp",
+      "shot": "korea/ai-v1/shot.webp",
+      "tackle": "korea/ai-v1/tackle.webp"
+    },
+    "goalkeeper": {
+      "idle": "korea/ai-v1/goalkeeper-idle.webp",
+      "save": "korea/ai-v1/goalkeeper-save.webp"
+    }
+  },
   "korea": {
     "idle": {
       "field": [

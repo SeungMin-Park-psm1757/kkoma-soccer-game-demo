@@ -4,6 +4,45 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 const viewports=[[360,800],[390,844],[412,915]];
 const origin=`http://127.0.0.1:${process.env.PORT||8000}`;
 const monitoredPages=new WeakMap();
+if(process.argv.includes('--national-art-only')){
+  const countries=[
+    {id:6,name:'대한민국',primary:'#e7263f'},
+    {id:1,name:'브라질',primary:'#f7d927'},
+    {id:2,name:'프랑스',primary:'#244ea8'},
+    {id:7,name:'일본',primary:'#2450a4'},
+    {id:3,name:'독일',primary:'#f4f4f4'},
+    {id:0,name:'아르헨티나',primary:'#8ecdf4'}
+  ];
+  for(const country of countries){
+    const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+    monitorPage(page);
+    await page.addInitScript(()=>{
+      window.__nationalSpriteDraws=[];
+      const drawImage=CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage=function(image,...args){
+        if(image?.dataset?.uniformSource)window.__nationalSpriteDraws.push({...image.dataset});
+        return drawImage.call(this,image,...args);
+      };
+    });
+    await page.goto(origin,{waitUntil:'networkidle'});
+    await page.evaluate(()=>localStorage.setItem('kkoma-tutorial-done','true'));
+    await page.reload({waitUntil:'networkidle'});
+    await page.click('[data-action="team"]');
+    await page.click(`[data-team="${country.id}"]`);
+    await page.click('[data-action="play"]');
+    await page.waitForTimeout(900);
+    const draws=await page.evaluate(()=>window.__nationalSpriteDraws);
+    if(!draws.some(sprite=>sprite.teamPrimary===country.primary))throw new Error(`${country.name} generated kit art was not drawn at 390x844`);
+    if(!draws.some(sprite=>sprite.uniformSource.endsWith('/idle.webp')||sprite.uniformSource.endsWith('/goalkeeper-idle.webp')))
+      throw new Error(`${country.name} idle sprite was not drawn at 390x844`);
+    await page.screenshot({path:`visual-qa/national-team-${country.id}-${country.name}.png`,fullPage:true});
+    assertNoBrowserErrors(page,`national art ${country.name}`);
+    await page.close();
+    console.log(`PASS: ${country.name} generated national player art at 390x844`);
+  }
+  await browser.close();
+  process.exit(0);
+}
 function monitorPage(page){
   const errors=[];monitoredPages.set(page,errors);
   page.on('pageerror',error=>errors.push(`pageerror: ${error.message}`));

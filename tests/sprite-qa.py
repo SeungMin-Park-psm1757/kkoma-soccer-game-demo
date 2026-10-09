@@ -127,3 +127,44 @@ for i,tile in enumerate(ai_tiles): ai_sheet.paste(tile,((i%4)*160,(i//4)*184))
 ai_sheet.save(out/"ai-v1-contact.png")
 print(json.dumps(ai_metrics, ensure_ascii=False, indent=2))
 print("PASS: AI source alpha, common canvas, foot baseline, and seven pose states")
+
+mask_path = Path("assets/players/national-kit-mask-v1.png")
+if not mask_path.is_file():
+    raise SystemExit("FAIL: national uniform mask atlas is missing")
+with Image.open(mask_path) as mask_atlas:
+    mask_atlas = mask_atlas.convert("RGBA")
+    if mask_atlas.size != (128, 136 * 7):
+        raise SystemExit(f"FAIL: national uniform mask atlas dimensions are {mask_atlas.size}")
+    mask_states = ("idle", "run", "pass", "shot", "tackle", "goalkeeper-idle", "goalkeeper-save")
+    shirt_floors = (42, 42, 36, 30, 47, 30, 78)
+    mask_tiles = []
+    for row, (state, shirt_floor) in enumerate(zip(mask_states, shirt_floors)):
+        tile = mask_atlas.crop((0, row * 136, 128, (row + 1) * 136))
+        channels = [tile.getchannel(channel) for channel in range(3)]
+        counts = [sum(channel.histogram()[1:]) for channel in channels]
+        if any(count < 70 for count in counts):
+            raise SystemExit(f"FAIL: incomplete clothing masks for {state}: {counts}")
+        if channels[0].crop((0, 0, 128, shirt_floor)).getbbox():
+            raise SystemExit(f"FAIL: shirt mask touches the head/face area for {state}")
+        mask_pixels = tile.load()
+        if any(sum(value > 0 for value in mask_pixels[x, y][:3]) > 1 for y in range(136) for x in range(128)):
+            raise SystemExit(f"FAIL: overlapping shirt/shorts/socks mask in {state}")
+        mask_tiles.append(tile)
+    review = Image.new("RGB", (128 * 7, 136), (20, 50, 40))
+    for index, (state, tile) in enumerate(zip(mask_states, mask_tiles)):
+        source = Image.open(ai_root / f"{state}.webp").convert("RGBA")
+        src, colors = source.load(), tile.load()
+        for y in range(136):
+            for x in range(128):
+                red, green, blue, alpha = src[x, y]
+                shirt, shorts, socks, _ = colors[x, y]
+                if shirt:
+                    red, green, blue = 255, 0, 0
+                elif shorts:
+                    red, green, blue = 0, 255, 0
+                elif socks:
+                    red, green, blue = 0, 0, 255
+                src[x, y] = (red, green, blue, alpha)
+        review.paste(source, (index * 128, 0), source)
+    review.save(out / "national-kit-mask-contact.png")
+print("PASS: all seven shared poses have disjoint shirt/shorts/socks masks with head-area exclusion")

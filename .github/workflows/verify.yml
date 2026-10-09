@@ -48,5 +48,8 @@ jobs:
       - name: Run asset integrity tests
         run: node tests/assets-integrity.mjs
 
+      - name: Check national uniform mask source
+        run: python scripts/build-national-kit-mask.py --check
+
       - name: Run sprite alignment QA
         run: python tests/sprite-qa.py

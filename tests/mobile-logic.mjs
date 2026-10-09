@@ -10,6 +10,15 @@ const element=()=>{
 };
 const drawImages=[];
 const audioInstances=[];
+function createScratchCanvas(){
+  let sourceImage=null;
+  const scratchContext={drawImage(image){sourceImage=image;},getImageData(){
+    const data=new Uint8ClampedArray(128*136*4),mask=sourceImage?.src?.includes('national-kit-mask-v1.png');
+    for(let offset=0;offset<data.length;offset+=4){data[offset]=mask?255:217;data[offset+1]=mask?255:40;data[offset+2]=mask?255:54;data[offset+3]=255;}
+    return {data};
+  },putImageData(){}};
+  return {width:0,height:0,dataset:{},getContext:()=>scratchContext};
+}
 let nextTimerId=0;
 const pendingTimers=new Map();
 function advanceTimer(delay){
@@ -31,7 +40,7 @@ const canvas={...element(),getContext:()=>ctx,getBoundingClientRect:()=>({left:0
 const screen={...element(),addEventListener(type,fn){listeners.screen[type]=fn;}};
 const elements=new Map([['#pitch',canvas],['#screen',screen]]);
 const document={hidden:false,querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector);},
-  addEventListener(type,fn){listeners.document[type]=fn;}};
+  addEventListener(type,fn){listeners.document[type]=fn;},createElement(name){return name==='canvas'?createScratchCanvas():element();}};
 const storage=new Map([['kkoma-cup-round','2'],['kkoma-muted','false']]);
 const spriteManifest=JSON.parse(readFileSync(new URL('../assets/players/manifest.json',import.meta.url),'utf8'));
 class ImageStub{constructor(){this.complete=true;this.naturalWidth=128;this.src='';}}
@@ -40,7 +49,7 @@ const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,de
   requestAnimationFrame(){},setTimeout(callback,delay){const id=++nextTimerId;pendingTimers.set(id,{callback,delay});return id;},clearTimeout(id){pendingTimers.delete(id);},advanceTimer,fetch:async()=>({json:async()=>spriteManifest})};
 vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,inPenaltyArea,beginOffsideFreeKick,beginGoalKick,updateRestart,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,inPenaltyArea,beginOffsideFreeKick,beginGoalKick,updateRestart,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,teamSprite,colorizeUniformPixels,teamArtCacheSize:()=>uniformSpriteCache.size,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -442,6 +451,17 @@ assert.equal(t.playerSprites.korea.shot.goalkeeper,null,'Korea goalkeeper shot u
 assert.equal(t.playerSprites.korea.premium.field.idle.src,'assets/players/korea/ai-v1/idle.webp','generated idle art is loaded');
 assert.equal(t.playerSprites.korea.premium.field.tackle.src,'assets/players/korea/ai-v1/tackle.webp','generated tackle art is loaded');
 assert.equal(t.playerSprites.korea.premium.goalkeeper.save.src,'assets/players/korea/ai-v1/goalkeeper-save.webp','generated keeper save art is loaded');
+assert.equal(t.playerSprites.common.uniformMask.src,'assets/players/national-kit-mask-v1.png','common garment mask atlas is loaded');
+const testKit={primary:'#2450a4',shorts:'#173a7c',socks:'#ffffff',gkPrimary:'#f2c534'};
+const shirtSource=[217,40,54,255,27,44,80,255,217,40,54,255,12,34,56,255];
+const fieldPixels=t.colorizeUniformPixels(shirtSource,[255,0,0,255,0,255,0,255,0,0,255,255,0,0,0,255],testKit,false);
+assert.deepEqual([...fieldPixels.slice(0,4)],[36,80,164,255],'shirt receives the country primary color');
+assert.deepEqual([...fieldPixels.slice(4,8)],[23,58,124,255],'shorts receive their independent color');
+assert.deepEqual([...fieldPixels.slice(8,12)],[255,255,255,255],'socks receive their independent color');
+assert.deepEqual([...fieldPixels.slice(12,16)],[12,34,56,255],'unmasked skin/hair pixels remain unchanged');
+const keeperPixels=t.colorizeUniformPixels([242,197,47,255,27,44,80,255,242,197,47,255],[255,0,0,255,0,255,0,255,0,0,255,255],testKit,true);
+assert.deepEqual([...keeperPixels.slice(0,4)],[242,197,52,255],'goalkeeper shirt uses the goalkeeper color');
+assert.deepEqual([...keeperPixels.slice(8,12)],[242,197,52,255],'goalkeeper socks use the goalkeeper color');
 t.startMatch();
 const spriteGame=t.game(),fieldPlayer=spriteGame.players.find(player=>player.side===0&&player.role!=='GK');
 assert.equal(spriteGame.home.name,'대한민국','sprite match is Korea home');
@@ -449,23 +469,28 @@ assert.equal(spriteGame.home.spriteKey,'korea','Korea team resolves generic spri
 assert.equal(t.countries.filter(country=>country.spriteKey).length,1,'only teams with production sprites opt in');
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded idle sprite is rendered');
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/idle.webp','generated idle art is used in match');
-t.playerSprites.korea.premium.field.idle.complete=false;
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/idle.webp','generated idle art is used in match');
+assert.equal(drawImages[0][0].dataset.teamPrimary,spriteGame.kits[0].primary,'home kit color is applied to generated art');
+assert.equal(t.teamArtCacheSize(),1,'players on the same team share one recolored state');
+t.playerSprites.common.uniformMask.complete=false;
+drawImages.length=0;t.drawPlayer(fieldPlayer);
+assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/idle.webp','Korea AI art remains the mask-loading fallback');
+t.playerSprites.common.uniformMask.complete=true;t.playerSprites.common.field.idle.complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages[0][0].src,`assets/players/korea/idle-${fieldPlayer.index%3+1}.webp`,'legacy sprite remains the generated-art fallback');
 t.playerSprites.korea.idle.field[fieldPlayer.index%3].complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,0,'Canvas fallback remains when generated and legacy sprites fail');
 t.playerSprites.korea.idle.field[fieldPlayer.index%3].complete=true;
-t.playerSprites.korea.premium.field.idle.complete=true;
+t.playerSprites.common.field.idle.complete=true;
 fieldPlayer.shotUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded shot sprite is rendered');
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/shot.webp');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/shot.webp');
 fieldPlayer.shotUntil=0;fieldPlayer.kickUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages.length,1,'loaded pass sprite is rendered');
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/pass.webp');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/pass.webp');
 t.playerSprites.korea.premium.field.pass.complete=false;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
 assert.equal(drawImages[0][0].src,`assets/players/korea/pass-${fieldPlayer.index%3+1}.webp`,'legacy pass art remains the premium fallback');
@@ -473,14 +498,15 @@ t.playerSprites.korea.premium.field.pass.complete=true;
 
 fieldPlayer.kickUntil=0;fieldPlayer.tackleUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/tackle.webp','generated tackle art is selected during a tackle');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/tackle.webp','generated tackle art is selected during a tackle');
 fieldPlayer.tackleUntil=0;
 const keeper=spriteGame.players.find(player=>player.side===0&&player.role==='GK');
 drawImages.length=0;t.drawPlayer(keeper);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/goalkeeper-idle.webp','generated goalkeeper idle art is used');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/goalkeeper-idle.webp','generated goalkeeper idle art is used');
+assert.equal(drawImages[0][0].dataset.keeperColor,spriteGame.kits[0].gkPrimary,'goalkeeper primary color is independently applied');
 keeper.saveUntil=spriteGame.elapsed+1;
 drawImages.length=0;t.drawPlayer(keeper);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/goalkeeper-save.webp','generated goalkeeper save art is selected');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/goalkeeper-save.webp','generated goalkeeper save art is selected');
 
 // Action states must yield back to locomotion without sticking.
 fieldPlayer.runUntil=spriteGame.elapsed+2;
@@ -488,19 +514,35 @@ fieldPlayer.actionStartedAt=spriteGame.elapsed;
 fieldPlayer.kickUntil=spriteGame.elapsed+.26;
 fieldPlayer.shotUntil=0;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/pass.webp','pass state takes priority over run');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/pass.webp','pass state takes priority over run');
 advance(.3);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/run.webp','pass returns to run');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/run.webp','pass returns to run');
 
 fieldPlayer.actionStartedAt=spriteGame.elapsed;
 fieldPlayer.kickUntil=spriteGame.elapsed+.36;
 fieldPlayer.shotUntil=spriteGame.elapsed+.36;
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/shot.webp','shot state takes priority over run');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/shot.webp','shot state takes priority over run');
 advance(.4);
 drawImages.length=0;t.drawPlayer(fieldPlayer);
-assert.equal(drawImages[0][0].src,'assets/players/korea/ai-v1/run.webp','shot returns to run');
+assert.equal(drawImages[0][0].dataset.uniformSource,'assets/players/korea/ai-v1/run.webp','shot returns to run');
+
+for(const country of t.countries){
+  t.setCountry(country.id);t.startMatch();const current=t.game(),field=current.players.find(player=>player.side===0&&player.role!=='GK'),opponent=current.players.find(player=>player.side===1&&player.role!=='GK');
+  const awayCountry=t.countries[(country.id+1)%t.countries.length];current.away=awayCountry;current.kits=t.matchKits(country,awayCountry);opponent.team=awayCountry;
+  const homeArt=t.teamSprite(field,'idle'),awayArt=t.teamSprite(opponent,'idle'),keeperArt=t.teamSprite(current.players.find(player=>player.side===0&&player.role==='GK'),'idle');
+  assert.equal(homeArt.dataset.teamPrimary,current.kits[0].primary,`${country.name} home shirt uses the resolved kit`);
+  assert.equal(homeArt.dataset.teamShorts,current.kits[0].shorts,`${country.name} home shorts use the resolved kit`);
+  assert.equal(homeArt.dataset.teamSocks,current.kits[0].socks,`${country.name} home socks use the resolved kit`);
+  assert.equal(awayArt.dataset.teamPrimary,current.kits[1].primary,`${awayCountry.name} opponent shirt uses the resolved home/away kit`);
+  assert.equal(keeperArt.dataset.keeperColor,current.kits[0].gkPrimary,`${country.name} goalkeeper is visibly distinct`);
+  assert.ok(t.teamArtCacheSize()<=14,'only two teams of state variants are cached');
+}
+t.setCountry(1);t.startMatch();let koreaOpponent=t.game();koreaOpponent.away=t.countries.find(country=>country.name==='대한민국');koreaOpponent.kits=t.matchKits(koreaOpponent.home,koreaOpponent.away);
+const koreanAwayPlayer=koreaOpponent.players.find(player=>player.side===1&&player.role!=='GK');koreanAwayPlayer.team=koreaOpponent.away;
+assert.equal(t.teamSprite(koreanAwayPlayer,'idle').dataset.teamPrimary,koreaOpponent.kits[1].primary,'Korea as opponent uses the selected away kit color');
+assert.ok(t.teamArtCacheSize()<=14,'cache remains bounded to the two active teams');
 
 for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   t.startMatch();const game=t.game(),keeper=game.players.find(player=>player.side===side&&player.role==='GK');

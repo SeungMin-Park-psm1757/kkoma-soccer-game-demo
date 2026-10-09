@@ -247,13 +247,22 @@
     if(image?.matches?.('[data-ending-image]')){const picture=image.parentElement;image.remove();picture.textContent=image.dataset.fallback;picture.setAttribute('aria-hidden','true');}
   },true);
 
-  const playerSprites={};
+  const playerSprites={},playerImageCache=new Map(),uniformSpriteCache=new Map();
   const loadPlayerSprite=file=>{
     if(typeof file!=='string'||file.includes('..'))return null;
-    const image=new Image();image.src=`assets/players/${file}`;return image;
+    if(!playerImageCache.has(file)){const image=new Image();image.src=`assets/players/${file}`;playerImageCache.set(file,image);}
+    return playerImageCache.get(file);
   };
   fetch('assets/players/manifest.json').then(response=>response.json()).then(manifest=>{
     for(const [teamKey,teamManifest] of Object.entries(manifest||{})){
+      if(teamKey==='commonArt'){
+        playerSprites.common={
+          uniformMask:loadPlayerSprite(teamManifest.uniformMask),maskRows:teamManifest.maskRows||{},
+          field:Object.fromEntries(Object.entries(teamManifest.field||{}).map(([state,file])=>[state,loadPlayerSprite(file)]).filter(([,image])=>image)),
+          goalkeeper:Object.fromEntries(Object.entries(teamManifest.goalkeeper||{}).map(([state,file])=>[state,loadPlayerSprite(file)]).filter(([,image])=>image))
+        };
+        continue;
+      }
       const states={};
       for(const state of ['idle','run','kick','shot']){
         const mapping=teamManifest?.[state]||{};
@@ -271,12 +280,47 @@
     }
   }).catch(()=>{});
 
+  function colorizeUniformPixels(source,mask,kit,goalkeeper) {
+    const pixels=new Uint8ClampedArray(source);
+    const hex=value=>[1,3,5].map(index=>parseInt(value.slice(index,index+2),16));
+    const target=[hex(goalkeeper?kit.gkPrimary:kit.primary),hex(kit.shorts),hex(goalkeeper?kit.gkPrimary:kit.socks)];
+    const base=[hex(goalkeeper?'#f2c52f':'#d92836'),hex('#1b2c50'),hex(goalkeeper?'#f2c52f':'#d92836')];
+    const luma=color=>color[0]*.2126+color[1]*.7152+color[2]*.0722;
+    for(let offset=0;offset<pixels.length;offset+=4){
+      const originalLuma=pixels[offset]*.2126+pixels[offset+1]*.7152+pixels[offset+2]*.0722;
+      for(let channel=0;channel<3;channel++){
+        const weight=mask[offset+channel]/255;
+        if(!weight)continue;
+        const factor=clamp(originalLuma/luma(base[channel]),.28,1.38);
+        for(let component=0;component<3;component++)pixels[offset+component]=Math.round(pixels[offset+component]*(1-weight)+target[channel][component]*factor*weight);
+      }
+    }
+    return pixels;
+  }
+
   function teamSprite(p,state) {
-    const key=p.team?.spriteKey;
-    if(!key)return null;
-    const mapping=playerSprites[key]?.[state];
-    const premium=playerSprites[key]?.premium;
-    const premiumImage=p.role==='GK'?premium?.goalkeeper?.[state==='save'?'save':'idle']:premium?.field?.[state==='kick'?'pass':state];
+    const legacy=playerSprites[p.team?.spriteKey],mapping=legacy?.[state],premium=legacy?.premium;
+    const premiumState=p.role==='GK'?(state==='save'?'save':'idle'):(state==='kick'?'pass':state);
+    const common=playerSprites.common,commonState=p.role==='GK'?(state==='save'?'save':'idle'):(state==='kick'?'pass':state);
+    const source=p.role==='GK'?common?.goalkeeper?.[commonState]:common?.field?.[commonState];
+    const kit=game?.kits?.[p.side]||p.team?.kit;
+    if(source?.complete&&source.naturalWidth>0&&common?.uniformMask?.complete&&common.uniformMask.naturalWidth>0&&kit){
+      const row=common.maskRows[`${p.role==='GK'?'goalkeeper-':''}${commonState}`];
+      const cacheKey=JSON.stringify([p.side,p.role,commonState,kit.primary,kit.shorts,kit.socks,kit.gkPrimary]);
+      if(uniformSpriteCache.has(cacheKey))return uniformSpriteCache.get(cacheKey);
+      if(Number.isInteger(row))try{
+        const makeCanvas=document.createElement('canvas');makeCanvas.width=128;makeCanvas.height=136;
+        const paint=makeCanvas.getContext('2d',{willReadFrequently:true}),maskCanvas=document.createElement('canvas');maskCanvas.width=128;maskCanvas.height=136;
+        const maskContext=maskCanvas.getContext('2d',{willReadFrequently:true});
+        paint.drawImage(source,0,0,128,136);maskContext.drawImage(common.uniformMask,0,row*136,128,136,0,0,128,136);
+        const sourceData=paint.getImageData(0,0,128,136),maskData=maskContext.getImageData(0,0,128,136);
+        sourceData.data.set(colorizeUniformPixels(sourceData.data,maskData.data,kit,p.role==='GK'));paint.putImageData(sourceData,0,0);
+        makeCanvas.dataset.uniformSource=source.src;makeCanvas.dataset.teamPrimary=kit.primary;makeCanvas.dataset.teamShorts=kit.shorts;makeCanvas.dataset.teamSocks=kit.socks;makeCanvas.dataset.keeperColor=kit.gkPrimary;
+        uniformSpriteCache.set(cacheKey,makeCanvas);return makeCanvas;
+      }catch{}
+    }
+    if(!p.team?.spriteKey)return null;
+    const premiumImage=p.role==='GK'?premium?.goalkeeper?.[premiumState]:premium?.field?.[premiumState];
     const image=premiumImage?.complete&&premiumImage.naturalWidth>0?premiumImage:p.role==='GK'?mapping?.goalkeeper:mapping?.field?.[p.index%3];
     return image?.complete&&image.naturalWidth>0?image:null;
   }
@@ -457,6 +501,7 @@
     if(tutorial)playMusic('menu');else playMusic('match',true);
     clearPointer();lastTap=null;
     const home=tutorial?countries.find(country=>country.name==='대한민국'):countries[selectedCountry],away=tutorial?countries.find(country=>country.name==='브라질'):chooseOpponent();
+    uniformSpriteCache.clear();
     const currentMode=tutorial?'tutorial':mode;
     game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
@@ -1084,7 +1129,7 @@
       const duration=state==='shot'?.36:state==='kick'?.26:0;
       const progress=duration?clamp((game.elapsed-(p.actionStartedAt??game.elapsed))/duration,0,1):0;
       const actionScale=state==='shot'?1+.045*Math.sin(progress*Math.PI):state==='kick'?1+.025*Math.sin(progress*Math.PI):1;
-      const width=radius*2.9*actionScale,height=radius*3.15*actionScale,bottom=pt.y+radius*1.65;
+      const width=radius*3.12*actionScale,height=radius*3.4*actionScale,bottom=pt.y+radius*1.65;
       const top=bottom-height*134/136;
       spriteTop=bottom-height*132/136;
       ctx.drawImage(image,pt.x-width/2,top,width,height);
