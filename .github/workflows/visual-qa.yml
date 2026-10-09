@@ -51,6 +51,8 @@ jobs:
           python3 -m http.server 8000 >/tmp/kkoma-http.log 2>&1 &
       - name: Capture mobile gameplay and tutorial views
         run: node tests/visual-qa.mjs
+      - name: Capture representative national team art
+        run: node tests/visual-qa.mjs --national-art-only
       - name: Capture championship ending views
         run: node tests/visual-qa.mjs --ending-only
       - name: Upload screenshots
