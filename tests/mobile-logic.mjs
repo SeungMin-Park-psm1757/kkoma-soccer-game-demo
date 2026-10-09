@@ -785,7 +785,7 @@ for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[
   mate.y=10;assert.equal(t.isOffsidePosition(mate,p.y),true);
   t.kick(p,mate.x-p.x,mate.y-p.y,.7,false,mate);
   assert.ok(game.offsidePass,'pass records offside suspects');
-  const opponent=game.players[17];t.setCamera(25);
+  const opponent=game.players[17];opponent.x=-20;t.setCamera(25);
   game.ball.x=opponent.x;game.ball.y=opponent.y;game.ball.vx=game.ball.vy=0;
   t.updateMatch(1/60);
   assert.equal(game.ball.owner,opponent,'opponent controlled interception is allowed');
