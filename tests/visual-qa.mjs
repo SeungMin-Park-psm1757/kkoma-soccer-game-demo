@@ -15,13 +15,13 @@ function assertNoBrowserErrors(page,label){const errors=monitoredPages.get(page)
 async function assertTouchLayout(page,width,height,label){
   const result=await page.evaluate(()=>({
     overflow:document.documentElement.scrollWidth>innerWidth||document.body.scrollWidth>innerWidth,
-    buttons:[...document.querySelectorAll('button')].filter(button=>getComputedStyle(button).display!=='none'&&button.getClientRects().length).map(button=>({label:button.getAttribute('aria-label')||button.textContent.trim(),className:button.className,...(()=>{const r=button.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};})()}))
+    buttons:[...document.querySelectorAll('button')].filter(button=>getComputedStyle(button).display!=='none'&&button.getClientRects().length).map(button=>({label:button.getAttribute('aria-label')||button.textContent.trim(),className:button.className,scrollable:Boolean(button.closest('.team-grid')),...(()=>{const r=button.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};})()}))
   }));
   if(result.overflow)throw new Error(`${label} has horizontal overflow at ${width}x${height}`);
   for(const button of result.buttons){
     if(button.width<=0||button.height<=0)throw new Error(`${label} has a zero-size button: ${button.label}`);
-    if(button.x<0||button.y<0||button.x+button.width>width||button.y+button.height>height)throw new Error(`${label} button clipped at ${width}x${height}: ${button.label}`);
-    if(/game-button|tutorial-tile|tackle-button|icon-button|tutorial-control/.test(button.className)&&Math.min(button.width,button.height)<44)throw new Error(`${label} important touch target is under 44px: ${button.label}`);
+    if(!button.scrollable&&(button.x<0||button.y<0||button.x+button.width>width||button.y+button.height>height))throw new Error(`${label} button clipped at ${width}x${height}: ${button.label}`);
+    if(/game-button|tutorial-tile|team-card|tackle-button|icon-button|tutorial-control/.test(button.className)&&Math.min(button.width,button.height)<44)throw new Error(`${label} important touch target is under 44px: ${button.label}`);
   }
 }
 
@@ -108,6 +108,18 @@ async function openTutorial(width,height){
 function center(width,height){return {x:width/2,y:78+(height-82)*0.5};}
 
 for(const [width,height] of viewports){
+  {
+    const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+    monitorPage(page);await page.goto(origin,{waitUntil:'networkidle'});
+    await page.screenshot({path:`visual-qa/home-${width}x${height}.png`,fullPage:true});
+    await assertTouchLayout(page,width,height,'home menu');
+    await page.evaluate(()=>localStorage.setItem('kkoma-tutorial-done','true'));
+    await page.reload({waitUntil:'networkidle'});await page.click('[data-action="team"]');
+    await page.screenshot({path:`visual-qa/team-select-${width}x${height}.png`,fullPage:true});
+    if(!await page.locator('.team-grid').count())throw new Error(`team selection missing at ${width}x${height}`);
+    await assertTouchLayout(page,width,height,'team selection');
+    assertNoBrowserErrors(page,`home/team ${width}x${height}`);await page.close();
+  }
   {
     const page=await openTutorial(width,height);
     await page.screenshot({path:`visual-qa/tutorial-menu-${width}x${height}.png`,fullPage:true});

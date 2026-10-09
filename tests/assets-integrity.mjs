@@ -36,7 +36,7 @@ async function checkManifest(value, label = 'player manifest') {
 await checkManifest(manifest);
 
 const game = await readFile(path.join(root, 'game.js'), 'utf8');
-const referenced = new Set([...game.matchAll(/['"](assets\/(?:audio|players|ending)\/[^'"]+)['"]/g)].map(match => match[1]));
+const referenced = new Set([...game.matchAll(/['"](assets\/(?:audio|players|ending|ui)\/[^'"]+)['"]/g)].map(match => match[1]));
 for (const file of referenced) await checkAsset(file, 'game.js');
 
 const endingContext = { window: {} };
