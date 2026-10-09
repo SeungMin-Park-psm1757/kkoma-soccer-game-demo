@@ -628,6 +628,7 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   assert.equal(t.playersInPlay().length,2,'tackle scene contains only attacker and defender');
   advance(7);assert.equal(t.appScreen(),'match','tackle demo alone does not steal the ball');
   assert.equal(game.ball.owner,carrier,'automatic pressure is disabled in tackle practice');
+  assert.equal(t.tackleButton.classList.contains('hidden'),true,'tackle tutorial button stays hidden before the six-second helper delay');
   assert.equal(t.tackleButton.classList.contains('hidden'),false,'button appears after the double-tap demo');
   t.pauseGame();listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action:'resume'}}:null}});
   assert.equal(t.tackleButton.classList.contains('hidden'),false,'resume restores the delayed tackle button');

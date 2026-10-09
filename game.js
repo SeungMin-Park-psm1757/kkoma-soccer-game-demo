@@ -456,8 +456,9 @@
       tackleButton.classList[tackleReady?'add':'remove']('ready');
     }
     tackleButton.setAttribute('aria-label',tackleReady?'상대가 공을 가졌어요. 태클 가능':game.restart?'골키퍼가 공을 차면 다시 태클할 수 있어요':'상대가 공을 가졌을 때 태클');
-    tackleButton.classList.toggle('hidden',Boolean(game.penalty));
-    const controlHint=game.penalty?(game.penalty.side===0?'⚽ 페널티킥! 골대 쪽으로 끌고 손을 떼요':'🥅 상대 페널티킥! 골키퍼를 응원해요'):game.restart?.kind==='offside'?'오프사이드! 상대편 프리킥':game.restart?.side===0?'골키퍼가 1초 뒤 차요 · 친구 쪽으로 끌어요':game.restart?'골키퍼가 공을 차요':tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
+    if(game.penalty)tackleButton.classList.add('hidden');
+    else if(!game.tutorial)tackleButton.classList.remove('hidden');
+    const controlHint=game.penalty?(game.penalty.side===0?'⚽ 페널티킥! 골대 쪽으로 끌고 손을 떼요':'🥅 상대 페널티킥! 골키퍼를 응원해요'):game.restart?.kind==='offside'?(game.restart.side===0?'상대 오프사이드! 우리 팀 프리킥':'오프사이드! 상대편 프리킥'):game.restart?.side===0?'골키퍼가 1초 뒤 차요 · 친구 쪽으로 끌어요':game.restart?'골키퍼가 공을 차요':tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
     if(dragHint.textContent!==controlHint)dragHint.textContent=controlHint;
   }
 
@@ -618,7 +619,7 @@
     taker.targetX=taker.x;taker.targetY=taker.y;
     game.ball.x=taker.x;game.ball.y=taker.y;game.ball.vx=game.ball.vy=0;
     game.restart={kind:'offside',side:defendingSide,taker,readyAt:game.elapsed+.8,queuedTarget:null,queuedDirection:null};
-    clearPointer();toast('🚩 오프사이드! 상대편 프리킥',1700);updateHud();
+    clearPointer();toast(defendingSide===0?'🚩 상대 오프사이드! 우리 팀 프리킥':'🚩 오프사이드! 상대편 프리킥',1700);updateHud();
   }
 
   function inPenaltyArea(defenderSide,x,y) {
