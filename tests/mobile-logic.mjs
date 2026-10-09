@@ -40,7 +40,7 @@ const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,de
   requestAnimationFrame(){},setTimeout(callback,delay){const id=++nextTimerId;pendingTimers.set(id,{callback,delay});return id;},clearTimeout(id){pendingTimers.delete(id);},advanceTimer,fetch:async()=>({json:async()=>spriteManifest})};
 vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,inPenaltyArea,beginOffsideFreeKick,beginGoalKick,updateRestart,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -102,6 +102,7 @@ function setup(x,y,mateX,mateY,attackDir=-1){
   t.setCamera(y);return {game,p,mate};
 }
 function event(x,y,time){return {pointerId:id,clientX:x,clientY:y,timeStamp:time,preventDefault(){}};}
+function clickAction(action){listeners.screen.click({target:{closest:selector=>selector==='[data-action]'?{dataset:{action}}:null}});}
 function drag(p,dx,dy,duration){
   const start=t.project(p.x,p.y),begin=stamp;
   listeners.canvas.pointerdown(event(start.x,start.y,begin));
@@ -755,6 +756,13 @@ assert.equal(context.window.KKOMA_ENDING_CONTENT.facts.length,8,'sourced real-pl
   assert.ok(Math.abs(away.speed/(6.7*team.rating.speed)-1.05)<1e-10,'AI outfield speed is raised exactly 5%');
   assert.ok(Math.abs(game.players[9].speed/(6.7*game.home.rating.speed)-1)<1e-10,'home controls keep original player speed');
 }
+{
+  const baseSpeeds=[3.6,5.5,5.8,5.8,5.5,6.2,6.4,6.4,6.2,6.7,6.7];
+  t.showTeams('cup');t.startMatch();const game=t.game();
+  assert.ok(game.players.filter(player=>player.side===1).every(player=>Math.abs(player.speed/(baseSpeeds[player.index%11]*game.away.rating.speed)-1.05)<1e-10),'cup opponents retain exactly 5% AI speed bonus');
+  assert.ok(game.players.filter(player=>player.side===0).every(player=>Math.abs(player.speed/(baseSpeeds[player.index%11]*game.home.rating.speed)-1)<1e-10),'cup home speeds remain unchanged');
+  t.showTeams('practice');
+}
 for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[1,40,95,82,66]]){
   {
     const {game,p,mate}=setup(0,carrierY,5,receiverY,direction);
@@ -793,6 +801,126 @@ for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[
   assert.equal(game.ball.owner,opponent,'opponent controlled interception is allowed');
   assert.equal(game.offsidePass,null,'opponent possession clears the old offside snapshot');
 }
+for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
+  const {game,p,mate}=setup(0,direction===-1?61:44,5,direction===-1?21:84,direction);
+  for(const defender of game.players.filter(player=>player.side===1))defender.y=defenderY;
+  mate.y=defenderY;assert.equal(t.isOffsidePosition(mate,p.y),false,'same-line attacker is onside in either half');
+  mate.y=direction===-1?60:45;assert.equal(t.isOffsidePosition(mate,p.y),false,'attacker in own half is onside');
+  mate.y=direction===-1?70:35;assert.equal(t.isOffsidePosition(mate,ballY),false,'attacker behind the ball is onside');
+}
+{
+  t.startMatch();const game=t.game();game.elapsed=74.99;t.updateMatch(.02);
+  assert.equal(game.period,2,'the second half begins at the normal break');
+  assert.equal(game.attackDir,1,'the second-half attack direction switches');
+  const passer=game.players[6],receiver=game.players[9];passer.x=0;passer.y=44;receiver.x=5;receiver.y=95;
+  for(const defender of game.players.filter(player=>player.side===1))defender.y=82;
+  assert.equal(t.isOffsidePosition(receiver,passer.y),true,'offside judgment follows the switched direction after halftime');
+}
+{
+  const {game,p,mate}=setup(0,61,6,10,-1),other=game.players[10];
+  for(const defender of game.players.filter(player=>player.side===1)){defender.x=30;defender.y=22;}
+  other.x=-8;other.y=48;mate.x=25;
+  t.kick(p,other.x-p.x,other.y-p.y,.7,false,other);
+  assert.equal(game.offsidePass.players.has(mate),true,'offside teammate is remembered after a pass');
+  game.ball.x=other.x;game.ball.y=other.y;game.ball.vx=game.ball.vy=0;game.elapsed=1;
+  t.updateMatch(1/60);
+  assert.equal(game.ball.owner,other,'a different onside receiver can play without an offside whistle');
+  assert.equal(game.restart,null,'offside-position teammate who did not play the ball causes no stoppage');
+}
+{
+  const {game}=setup(0,55,5,50,-1),taker=game.players.find(player=>player.side===0&&player.role==='GK'),mate=game.players[9];
+  for(const defender of game.players.filter(player=>player.side===1))defender.y=80;
+  taker.x=0;taker.y=100;mate.x=0;mate.y=60;
+  t.beginGoalKick(0);game.restart.readyAt=game.elapsed;game.restart.queuedTarget=mate;
+  t.updateMatch(1/60);
+  assert.equal(game.offsidePass,null,'direct goal-kick receiver is exempt from offside');
+  game.elapsed=game.ball.kickLockUntil+.1;game.ball.x=mate.x;game.ball.y=mate.y;game.ball.vx=game.ball.vy=0;
+  t.updateMatch(1/60);
+  assert.equal(game.ball.owner,mate,'goal-kick receiver directly controls the ball without an offside whistle');
+  t.beginOffsideFreeKick(1,{x:0,y:60});game.restart.readyAt=game.elapsed;game.restart.queuedTarget=game.players[17];
+  game.players[17].y=10;game.players[18].y=20;game.players[19].y=22;
+  t.updateMatch(1/60);
+  assert.equal(game.restart,null,'offside free kick restarts play');
+}
+{
+  const game=(()=>{t.startMatch();return t.game();})();
+  game.attackDir=1;game.period=2;
+  assert.equal(t.inPenaltyArea(0,18,16),true,'opposite team penalty area uses the first-half goal');
+  assert.equal(t.inPenaltyArea(0,18,16.01),false,'position outside the first-half box end line is not a penalty');
+  assert.equal(t.inPenaltyArea(1,18,89),true,'penalty area includes its line in the second half direction');
+  assert.equal(t.inPenaltyArea(1,18.01,89),false,'position outside the box side line is not a penalty');
+  assert.equal(t.inPenaltyArea(1,0,88.99),false,'position beyond the box end line is not a penalty');
+  assert.equal(t.beginPenaltyKick(0),true,'home can receive a penalty after the teams switch ends');
+  assert.equal(game.penalty.shooter.y,94,'penalty spot follows the switched attacking direction');
+  const positions=game.players.map(player=>[player.x,player.y]);
+  t.updateMatch(.1);
+  assert.equal(game.penalty.phase,'setup','other AI activity cannot overwrite penalty setup');
+  assert.equal(JSON.stringify(game.players.map(player=>[player.x,player.y])),JSON.stringify(positions),'players remain set while penalty is pending');
+  t.pauseGame();assert.equal(game.paused,true,'penalty can be paused');
+  clickAction('resume');assert.equal(game.paused,false,'penalty resumes without losing its setup');
+  assert.equal(game.penalty.phase,'setup');
+  assert.equal(t.tryManualTackle(),false,'ordinary tackle cannot interrupt a penalty');
+  forcedRandom=0;
+  const start=t.project(game.penalty.shooter.x,game.penalty.shooter.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x,start.y+100,begin+100));
+  assert.equal(game.aim.kind,'shot','second-half penalty points toward the lower goal');
+  listeners.canvas.pointerup(event(start.x,start.y+100,begin+110));id++;stamp+=1000;
+  assert.equal(game.penalty.phase,'flight','second-half release starts the penalty shot');
+  advance(.5);assert.equal(game.score[0],1,'second-half lower-goal penalty scores for the correct team');
+  assert.equal(game.goalEvents[0].side,0,'second-half penalty goal is recorded for the attacking team');
+  forcedRandom=null;
+  assert.equal(t.beginPenaltyKick(1),true,'the opposite team can also take a penalty');
+  assert.equal(game.penalty.shooter.y,11,'opposite team penalty follows its own switched attacking direction');
+  assert.equal(game.penalty.keeper.side,0,'the defending side gets the goalkeeper');
+}
+{
+  const game=(()=>{t.startMatch();return t.game();})();
+  assert.equal(t.beginPenaltyKick(0),true);
+  const penalty=game.penalty,score=[...game.score];
+  penalty.phase='flight';penalty.kickedAt=game.elapsed;penalty.saveChecked=true;
+  game.ball.owner=null;game.ball.x=0;game.ball.y=10;game.ball.vx=80;game.ball.vy=-50;
+  t.updateMatch(.25);
+  assert.equal(game.penalty,null,'wide penalty miss ends penalty mode');
+  assert.equal(game.restart?.kind,'goalKick','wide miss restarts with a goal kick');
+  assert.equal(game.score[0],score[0],'wide miss does not score for home');
+  assert.equal(game.score[1],score[1],'wide miss does not score for away');
+}
+{
+  const game=(()=>{t.startMatch();return t.game();})();
+  t.beginPenaltyKick(0);forcedRandom=0;
+  const start=t.project(game.penalty.shooter.x,game.penalty.shooter.y),begin=stamp;
+  listeners.canvas.pointerdown(event(start.x,start.y,begin));
+  listeners.canvas.pointermove(event(start.x+120,start.y-100,begin+100));
+  assert.ok(game.aim.toX>9.2,'a wide drag preview can aim beyond the post');
+  listeners.canvas.pointerup(event(start.x+120,start.y-100,begin+110));id++;stamp+=1000;
+  advance(.6);
+  assert.equal(game.score[0],0,'aiming outside the post cannot score');
+  assert.equal(game.restart?.kind,'goalKick','wide aim misses and awards a goal kick');
+  forcedRandom=null;
+}
+{
+  t.showTutorial('practice');
+  assert.match(t.screen.innerHTML,/data-action="penalty-practice"/,'tutorial menu exposes penalty practice');
+  const cupRound=storage.get('kkoma-cup-round'),journey=storage.get('kkoma-cup-journey-v1');
+  clickAction('penalty-practice');
+  let game=t.game();
+  assert.equal(game.mode,'practice','penalty practice does not start a cup round');
+  assert.equal(game.penalty?.phase,'setup','penalty practice reuses the normal penalty setup');
+  assert.equal(storage.get('kkoma-cup-round'),cupRound,'penalty practice preserves cup progress');
+  assert.equal(storage.get('kkoma-cup-journey-v1'),journey,'penalty practice preserves saved championship stories');
+  forcedRandom=0;t.shootPenaltyKick(game.penalty.shooter,0);advance(.9);
+  assert.equal(t.appScreen(),'penalty-result','completed penalty practice offers a result screen');
+  assert.match(t.screen.innerHTML,/골! 잘했어!/,'a scored practice shot gets a result');
+  assert.equal(game.score[0],0,'practice goal does not change the match score');
+  assert.equal(game.goalEvents.length,0,'practice goal does not enter match goal history');
+  assert.match(t.screen.innerHTML,/data-action="penalty-again"/,'penalty can be repeated');
+  assert.equal(storage.get('kkoma-cup-round'),cupRound,'penalty practice leaves cup progress unchanged after a shot');
+  assert.equal(storage.get('kkoma-cup-journey-v1'),journey,'penalty practice does not write championship history');
+  clickAction('penalty-again');game=t.game();assert.equal(game.penalty?.phase,'setup','repeat starts a fresh penalty');
+  clickAction('penalty-menu');assert.equal(t.appScreen(),'tutorial','practice can return to the tutorial menu');
+  forcedRandom=null;
+}
 {
   const game=(()=>{t.startMatch();return t.game();})();
   assert.equal(t.beginPenaltyKick(0),true,'home penalty kick is set up');
@@ -802,12 +930,13 @@ for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[
   const start=t.project(game.penalty.shooter.x,game.penalty.shooter.y),begin=stamp;
   forcedRandom=0; // goalkeeper chooses left, shot is aimed right.
   listeners.canvas.pointerdown(event(start.x,start.y,begin));
-  listeners.canvas.pointermove(event(start.x+95,start.y-100,begin+100));
+  listeners.canvas.pointermove(event(start.x+35,start.y-100,begin+100));
   assert.equal(game.aim.kind,'shot','penalty gesture displays a shot guide');
-  listeners.canvas.pointerup(event(start.x+95,start.y-100,begin+110));id++;stamp+=1000;
+  listeners.canvas.pointerup(event(start.x+35,start.y-100,begin+110));id++;stamp+=1000;
   assert.equal(game.penalty.phase,'flight','drag release starts a penalty shot');
   advance(.8);
   assert.equal(game.score[0],1,'on-target penalty kick can score');
+  assert.equal(`${game.goalEvents.at(-1)?.score[0]}:${game.goalEvents.at(-1)?.score[1]}`,'1:0','penalty goal is recorded in goalEvents');
   assert.equal(game.penalty,null,'goal clears penalty mode before kickoff');
   forcedRandom=null;
 }
@@ -829,4 +958,16 @@ for(const [direction,carrierY,receiverY,defenseY,onsideY] of [[-1,65,10,22,40],[
   assert.equal(game.penalty?.side,0,'an illegal defensive challenge inside the area gives the attacker a penalty');
   forcedRandom=null;
 }
-console.log('PASS: mobile controls, tutorials, tackling, keeper restarts, randomized music, Korea sprite fallback, and cup journey records');
+{
+  const savedRound=storage.get('kkoma-cup-round');t.showTeams('cup');t.startMatch();const game=t.game();
+  game.period=2;game.attackDir=1;game.elapsed=149.9;
+  assert.equal(t.beginPenaltyKick(0),true,'a late match penalty starts before full time');
+  game.penalty.phase='flight';game.penalty.kickedAt=game.elapsed;game.penalty.saveChecked=true;
+  game.ball.owner=null;game.ball.x=0;game.ball.y=95;game.ball.vx=80;game.ball.vy=50;
+  t.updateMatch(.25);assert.equal(game.restart?.kind,'goalKick','late miss finishes before the cup shootout starts');
+  t.updateMatch(.02);
+  assert.equal(t.appScreen(),'result','a resolved tied match proceeds to its result');
+  assert.ok(game.shootout,'resolved penalty does not block the existing cup shootout');
+  storage.set('kkoma-cup-round',savedRound);t.showTeams('practice');
+}
+console.log('PASS: mobile controls, tutorials, offside, penalties, 5% AI speed, keeper restarts, randomized music, sprites, and cup journey records');

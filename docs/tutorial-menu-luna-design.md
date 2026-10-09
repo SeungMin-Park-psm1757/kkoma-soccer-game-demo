@@ -208,3 +208,11 @@ PR #5 head SHA까지 확인해. main 직접 push/merge 또는 Pages 설정 변�
 - `node --check game.js`, `node --check tests/mobile-logic.mjs`, `node tests/mobile-logic.mjs`, `git diff --check`: PASS.
 - 브라우저 시각 QA는 Chrome 모바일 에뮬레이션 360×800, 390×844, 412×915에서 연습 메뉴/이동/태클을 캡처하고 메뉴와 안내/태클 버튼의 viewport 내 배치를 검사했다: PASS.
 - 실제 Android 기기에서의 FPS·터치 손맛, 어린이 사용성, reduced-motion 동작은 NOT VERIFIED.
+
+## 13. 페널티킥 연습 후속 변경
+
+- 네 가지 기본 조작 연습은 유지하고 메뉴에 `페널티킥 연습` 진입 버튼을 추가한다.
+- 별도 튜토리얼 판정 없이 경기의 `beginPenaltyKick()`과 드래그·손 떼기 슛을 재사용한다.
+- 조준선은 골대 폭 밖까지 보여 주며, 넓게 겨냥하면 실축할 수 있다.
+- 득점·선방·실축 뒤 `한 번 더`와 `연습 메뉴`를 제공하며, 이 연습은 컵 라운드와 우승 기록을 저장하지 않는다.
+- 360×800, 390×844, 412×915에서 메뉴, 페널티 준비, 결과 화면의 터치 영역과 잘림을 검사한다.

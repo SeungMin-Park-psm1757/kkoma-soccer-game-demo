@@ -280,7 +280,7 @@
   const musicTracks={menu:['assets/audio/menu/Soccer Dash Loop.mp3','assets/audio/menu/Soccer Dash Loop (Take 2).mp3'],match:['assets/audio/match/Kickoff Bounce.mp3','assets/audio/match/Pocket Pitch.mp3']};
   let musicAudio=null,musicMode=null;
   let pointer=null, lastTap=null, messageTimer=0;
-  const DOUBLE_TAP_MS=460, TAP_MOVE_LIMIT=.035;
+  const DOUBLE_TAP_MS=460, TAP_MOVE_LIMIT=.035, PENALTY_AIM_LIMIT=13;
   const MIN_GESTURE_PIXELS=20, PASS_TARGET_RADIUS=32;
 
   function resize() {
@@ -314,7 +314,22 @@
     else tutorialSession.flow='menu';
     tutorialSession.stepId=null;appScreen='tutorial'; game=null; pointer=null;tutorialOverlay.classList.add('hidden');hud.classList.add('hidden'); hint.classList.add('hidden'); dragHint.classList.add('hidden'); directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     screen.className='screen menu-screen';
-    screen.innerHTML=`<div class="panel tutorial-menu"><p class="tutorial-step">손가락으로 직접 해봐요</p><h2 class="selection-title">조작 연습</h2><div class="tutorial-grid">${tutorialPages.map(page=>`<button class="tutorial-tile${tutorialSession.completed.includes(page.id)?' done':''}" data-action="tutorial-step" data-step="${page.id}" aria-label="${page.title} 연습${tutorialSession.completed.includes(page.id)?', 완료':''}"><span aria-hidden="true">${page.icon}</span><span>${page.title}</span>${tutorialSession.completed.includes(page.id)?'<span aria-hidden="true">✓</span>':''}</button>`).join('')}</div><div class="tutorial-menu-actions"><button class="game-button" data-action="tutorial-all">처음부터 연습</button><button class="game-button secondary" data-action="tutorial-start-match">바로 경기하기</button><button class="game-button ghost" data-action="tutorial-home">메뉴로</button></div></div>`;
+    screen.innerHTML=`<div class="panel tutorial-menu"><p class="tutorial-step">손가락으로 직접 해봐요</p><h2 class="selection-title">조작 연습</h2><div class="tutorial-grid">${tutorialPages.map(page=>`<button class="tutorial-tile${tutorialSession.completed.includes(page.id)?' done':''}" data-action="tutorial-step" data-step="${page.id}" aria-label="${page.title} 연습${tutorialSession.completed.includes(page.id)?', 완료':''}"><span aria-hidden="true">${page.icon}</span><span>${page.title}</span>${tutorialSession.completed.includes(page.id)?'<span aria-hidden="true">✓</span>':''}</button>`).join('')}</div><button class="game-button ghost tutorial-penalty-entry" data-action="penalty-practice">⚽ 페널티킥 연습</button><div class="tutorial-menu-actions"><button class="game-button" data-action="tutorial-all">처음부터 연습</button><button class="game-button secondary" data-action="tutorial-start-match">바로 경기하기</button><button class="game-button ghost" data-action="tutorial-home">메뉴로</button></div></div>`;
+  }
+
+  function beginPenaltyPractice() {
+    const previousMode=mode;mode='practice';startMatch();mode=previousMode;
+    game.penaltyPractice=true;
+    if(!beginPenaltyKick(0))showTutorial('practice');
+  }
+
+  function finishPenaltyPractice(message) {
+    if(!game?.penaltyPractice)return false;
+    clearPointer();lastTap=null;game.paused=true;appScreen='penalty-result';
+    dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
+    screen.className='screen';
+    screen.innerHTML=`<div class="panel tutorial-card"><div class="tutorial-emoji">⚽</div><h2 class="selection-title">${message}</h2><p>골대 쪽으로 끌고 손을 떼서 다시 해봐요.</p><div class="button-stack" style="margin:16px auto 0"><button class="game-button" data-action="penalty-again">한 번 더</button><button class="game-button ghost" data-action="penalty-menu">연습 메뉴</button></div></div>`;
+    return true;
   }
 
   function startTutorialExercise(stepId,flow='single') {
@@ -654,7 +669,7 @@
     if(!pen||pen.phase!=='setup'||pen.shooter!==shooter)return false;
     pen.phase='flight';pen.saveX=random(-7,7);pen.keeper.x=pen.saveX;pen.kickedAt=game.elapsed;
     const goal=attackGoal(pen.side);
-    kick(shooter,clamp(aimX,-7.5,7.5)-shooter.x,goal-shooter.y,.78,true);
+    kick(shooter,clamp(aimX,-PENALTY_AIM_LIMIT,PENALTY_AIM_LIMIT)-shooter.x,goal-shooter.y,.78,true);
     return true;
   }
 
@@ -675,17 +690,17 @@
       const progress=(keeperY-previousY)/(ball.y-previousY||1);
       const xAtKeeper=previousX+(ball.x-previousX)*clamp(progress,0,1);
       if(Math.abs(xAtKeeper-pen.saveX)<2.1){
-        game.penalty=null;beginGoalKick(1-pen.side);toast('🧤 골키퍼가 페널티킥을 막았어!',1700);return true;
+        game.penalty=null;if(finishPenaltyPractice('골키퍼가 막았어!'))return true;beginGoalKick(1-pen.side);toast('🧤 골키퍼가 페널티킥을 막았어!',1700);return true;
       }
     }
     if(goal===0?ball.y<=0:ball.y>=105){
       game.penalty=null;
-      if(Math.abs(ball.x)<9.2)scoreGoal(pen.side);
-      else{beginGoalKick(1-pen.side);toast('페널티킥이 골대 밖으로 나갔어!',1600);}
+      if(Math.abs(ball.x)<9.2){if(finishPenaltyPractice('골! 잘했어!'))return true;scoreGoal(pen.side);}
+      else{if(finishPenaltyPractice('골대 밖으로 나갔어!'))return true;beginGoalKick(1-pen.side);toast('페널티킥이 골대 밖으로 나갔어!',1600);}
       return true;
     }
     if(game.elapsed-pen.kickedAt>3){
-      game.penalty=null;beginGoalKick(1-pen.side);return true;
+      game.penalty=null;if(finishPenaltyPractice('공이 멈췄어!'))return true;beginGoalKick(1-pen.side);return true;
     }
     updateHud();return true;
   }
@@ -1192,7 +1207,7 @@
     if(!pointer||!game)return;
     const p=pointer.player,point=pointer.last,metrics=gestureMetrics(pointer,point);
     if(game.penalty?.phase==='setup'&&game.penalty.shooter===p){
-      const goalY=attackGoal(p.side),aimX=clamp(metrics.dx*.46,-7.5,7.5);
+      const goalY=attackGoal(p.side),aimX=clamp(metrics.dx*.46,-PENALTY_AIM_LIMIT,PENALTY_AIM_LIMIT);
       game.aim={x:p.x,y:p.y,toX:aimX,toY:goalY,startScreenX:pointer.start.x,startScreenY:pointer.start.y,
         rawScreenX:point.x,rawScreenY:point.y,kind:metrics.distance>=TAP_MOVE_LIMIT?'shot':'move',target:null};
       return;
@@ -1327,6 +1342,8 @@
     if(action==='team'){if(!tutorialSeen)showTutorial('practice');else showTeams('practice');}
     else if(action==='tutorial')showTutorial('practice');
     else if(action==='tutorial-step')startTutorialExercise(button.dataset.step,'single');
+    else if(action==='penalty-practice'||action==='penalty-again')beginPenaltyPractice();
+    else if(action==='penalty-menu')showTutorial('practice');
     else if(action==='tutorial-all'){tutorialSession.flow='all';tutorialSession.stepIndex=0;startTutorialExercise(tutorialPages[0].id,'all');}
     else if(action==='tutorial-next'){tutorialSession.stepIndex++;startTutorialExercise(tutorialPages[tutorialSession.stepIndex].id,'all');}
     else if(action==='tutorial-again'){if(game?.tutorial)startTutorialExercise(game.tutorial.stepId,game.tutorial.flow);}
