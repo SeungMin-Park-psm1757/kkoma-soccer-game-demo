@@ -1071,6 +1071,11 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   }
   assert.ok(movement[0]<movement[1]&&movement[1]<movement[2],'Hard and Hell have modestly higher AI movement');
   assert.ok(t.AI_MODES.hard.thinking>t.AI_MODES.hell.thinking,'Hell makes decisions sooner');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:'hell'}}:null}});
+  t.startTutorialExercise('pass','single');
+  const tutorial=t.game(),tutorialAway=tutorial.players[17];
+  assert.equal(tutorial.aiMode,'normal','tutorial uses the original AI settings');
+  assert.ok(Math.abs(tutorialAway.speed/(6.4*tutorial.away.rating.speed)-1.05)<1e-10,'tutorial opponent retains original speed');
   listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:'normal'}}:null}});
   t.showTeams('practice');
 }

@@ -496,13 +496,13 @@
     return choices[Math.floor(Math.random()*choices.length)];
   }
 
-  function makeTeam(team,side,attackDir) {
+  function makeTeam(team,side,attackDir,level=aiMode) {
     const attackingEnd=(side===0?(attackDir<0?0:105):(attackDir<0?105:0));
     const defendingEnd=attackingEnd===0?105:0;
     return formation.map(([fx,fy,speed,role],index)=>{
       const baseDepth=role==='GK'?5:fy;
       const y=defendingEnd===0?baseDepth:105-baseDepth;
-      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed*(side===1?1.05*AI_MODES[aiMode].pace:1),role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0,manualUntil:0,tackleUntil:0,runUntil:0,kickUntil:0,shotUntil:0,saveUntil:0,actionStartedAt:0};
+      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed*(side===1?1.05*AI_MODES[level].pace:1),role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0,manualUntil:0,tackleUntil:0,runUntil:0,kickUntil:0,shotUntil:0,saveUntil:0,actionStartedAt:0};
     });
   }
 
@@ -514,7 +514,7 @@
     uniformSpriteCache.clear();
     const currentMode=tutorial?'tutorial':mode;
     game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,aiMode:tutorial?'normal':aiMode,
-      players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
+      players:[...makeTeam(home,0,-1,tutorial?'normal':aiMode),...makeTeam(away,1,-1,tutorial?'normal':aiMode)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
       controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,penalty:null,shootout:null,shootoutState:null,offsidePass:null,goalEvents:[],
       tutorial:tutorial?{stepId:tutorialStepId,flow:tutorialFlow,stepIndex:tutorialSession?.stepIndex||0,pendingMode:tutorialSession?.pendingMode||mode,phase:'playing',sceneToken:0,action:null,retryAt:null,stageStart:0,userTouched:false,activePlayers:[],player:null,target:null}:null};
     if(currentMode==='cup')ensureCupJourney();
@@ -907,7 +907,7 @@
     game.manualTackler=null;game.manualTackleUntil=0;game.restart=null;game.penalty=null;game.offsidePass=null;
     for(let i=0;i<game.players.length;i++){
       const side=i<11?0:1, idx=i%11, team=side===0?game.home:game.away;
-      const clone=makeTeam(team,side,game.attackDir)[idx];Object.assign(game.players[i],clone);
+      const clone=makeTeam(team,side,game.attackDir,game.aiMode)[idx];Object.assign(game.players[i],clone);
     }
     const taker=game.players[kickoffSide===0?6:17];taker.x=0;taker.y=52.5;
     game.ball.x=0;game.ball.y=52.5;setPossession(taker);game.ball.lastKicker=null;
