@@ -49,7 +49,7 @@ const context={document,window:{},Image:ImageStub,Audio:AudioStub,Math:vmMath,de
   requestAnimationFrame(){},setTimeout(callback,delay){const id=++nextTimerId;pendingTimers.set(id,{callback,delay});return id;},clearTimeout(id){pendingTimers.delete(id);},advanceTimer,fetch:async()=>({json:async()=>spriteManifest})};
 vm.runInNewContext(readFileSync(new URL('../ending-content.js',import.meta.url),'utf8'),context,{filename:'ending-content.js'});
 const source=readFileSync(new URL('../game.js',import.meta.url),'utf8').replace(/\}\)\(\);\s*$/,
-  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,inPenaltyArea,beginOffsideFreeKick,beginGoalKick,updateRestart,beginPenaltyKick,shootPenaltyKick,kick,startMatch,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,teamSprite,colorizeUniformPixels,teamArtCacheSize:()=>uniformSpriteCache.size,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
+  'globalThis.testApi={countries,matchKits,colorDistance,project,isOffsidePosition,inPenaltyArea,beginOffsideFreeKick,beginGoalKick,updateRestart,beginPenaltyKick,shootPenaltyKick,kick,startMatch,beginShootout,advanceShootout,finishShootoutKick,chooseShootoutDive,shootoutIsOver,aiTuning,AI_MODES,startTutorialExercise,enterTutorialDestination,resetPositions,resetTutorialScene,updateMatch,drawPlayer,teamSprite,colorizeUniformPixels,teamArtCacheSize:()=>uniformSpriteCache.size,playerSprites,tryManualTackle,updateHud,showHome,showTutorial,showTeams,pauseGame,finishMatch,scoreGoal,showEnding,cupComparisons,readCupJourney,playMusic,musicTracks,musicState:()=>({mode:musicMode,src:musicAudio?.src,paused:musicAudio?.paused,loop:musicAudio?.loop}),advanceTimer,game:()=>game,pointer:()=>pointer,playersInPlay,appScreen:()=>appScreen,tutorialSession:()=>tutorialSession,screen,tutorialOverlay:document.querySelector("#tutorial-overlay"),tackleButton:document.querySelector("#tackle-button"),dragHint:document.querySelector("#drag-hint"),directionHint:document.querySelector("#attack-direction"),setCamera:y=>{cameraY=y},setCupRound:value=>{cupRound=value},setCountry:value=>{selectedCountry=value}};})();');
 vm.runInNewContext(source,context,{filename:'game.js'});
 const t=context.testApi;
 
@@ -732,12 +732,27 @@ for(const [side,step,stepsBeforeReady] of [[0,1/60,59],[1,1/30,29]]){
   for(let round=0;round<5;round++){
     t.setCountry(round===1?5:6);
     t.showTeams('cup');t.startMatch();const game=t.game();
-    if(round===4){t.scoreGoal(0);t.scoreGoal(1);forcedRandom=.9;}
+    if(round===4){t.scoreGoal(0);t.scoreGoal(1);}
     else t.scoreGoal(0);
     game.elapsed=round+10;t.finishMatch();
-    if(round===4){const saved=storage.get('kkoma-cup-journey-v1'),shootout=[...game.shootout];forcedRandom=.2;t.finishMatch();
+    if(round===4){
+      assert.ok(game.shootoutState,'tied World Cup final opens an interactive shootout');
+      assert.equal(game.shootout,null,'random shootout scores are not assigned');
+      assert.equal(game.ended,false,'a tied match is not over until the shootout finishes');
+      assert.equal(game.penalty?.side,0,'home team kicks first');
+      const before=storage.get('kkoma-cup-journey-v1');
+      for(const made of [true,true,true,true,true,true,true,true,true,false]){
+        assert.ok(game.penalty,'each attempted kick must have a real penalty phase');
+        t.finishShootoutKick(made);
+        if(game.shootoutState){game.elapsed=game.shootoutState.nextAt;t.advanceShootout();}
+      }
+      assert.deepEqual([...game.shootout],[5,4],'five home and four away attempts scored');
+      assert.equal(game.ended,true,'shootout eventually finalizes the tied match');
+      assert.notEqual(storage.get('kkoma-cup-journey-v1'),before,'cup win saves only after the last kick');
+      const saved=storage.get('kkoma-cup-journey-v1'),shootout=[...game.shootout];t.finishMatch();
       assert.deepEqual([...game.shootout],shootout,'repeated finish must not reroll a shootout');
-      assert.equal(storage.get('kkoma-cup-journey-v1'),saved,'repeated finish must not rewrite cup results');}
+      assert.equal(storage.get('kkoma-cup-journey-v1'),saved,'repeated finish must not rewrite cup results');
+    }
   }
   const journey=JSON.parse(storage.get('kkoma-cup-journey-v1'));
   assert.equal(journey.current.startedRound,0,'journey starts from the actual initial round');
@@ -1032,8 +1047,77 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   game.ball.owner=null;game.ball.x=0;game.ball.y=95;game.ball.vx=80;game.ball.vy=50;
   t.updateMatch(.25);assert.equal(game.restart?.kind,'goalKick','late miss finishes before the cup shootout starts');
   t.updateMatch(.02);
-  assert.equal(t.appScreen(),'result','a resolved tied match proceeds to its result');
-  assert.ok(game.shootout,'resolved penalty does not block the existing cup shootout');
+  assert.equal(t.appScreen(),'match','a resolved tied match starts a playable shootout');
+  assert.ok(game.shootoutState,'resolved late penalty does not block the new cup shootout');
+  assert.equal(game.shootout,null,'no automatic shootout score is fabricated');
   storage.set('kkoma-cup-round',savedRound);t.showTeams('practice');
+}
+
+{
+  t.showTeams('practice');
+  assert.match(t.screen.innerHTML,/data-difficulty="normal"/,'normal difficulty is selectable');
+  assert.match(t.screen.innerHTML,/data-difficulty="hard"/,'Hard is selectable');
+  assert.match(t.screen.innerHTML,/data-difficulty="hell"/,'Hell is selectable');
+  const modes=['normal','hard','hell'];
+  const movement=[];
+  for(const name of modes){
+    listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:name}}:null}});
+    assert.equal(storage.get('kkoma-ai-mode-v1'),JSON.stringify(name),'difficulty preference is stored');
+    t.startMatch();const match=t.game(),opponent=match.players[17];
+    assert.equal(match.aiMode,name,'game uses the selected AI level');
+    assert.equal(t.AI_MODES[name].score,[10,40,60][modes.indexOf(name)],'AI level rubric is visible');
+    movement.push(opponent.speed);
+    assert.ok(Math.abs(match.players[6].speed/(6.4*match.home.rating.speed)-1)<1e-10,'user player speed is preserved');
+  }
+  assert.ok(movement[0]<movement[1]&&movement[1]<movement[2],'Hard and Hell have modestly higher AI movement');
+  assert.ok(t.AI_MODES.hard.thinking>t.AI_MODES.hell.thinking,'Hell makes decisions sooner');
+  listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:'normal'}}:null}});
+  t.showTeams('practice');
+}
+{
+  t.setCupRound(0);t.showTeams('cup');t.startMatch();
+  const match=t.game(),cupBefore=storage.get('kkoma-cup-round');
+  match.elapsed=150;t.finishMatch();
+  assert.ok(match.shootoutState,'0:0 opens the shootout');
+  assert.equal(match.score[0],0,'regular time score stays 0:0');
+  assert.equal(storage.get('kkoma-cup-round'),cupBefore,'cup round is not saved before shootout resolution');
+  t.finishShootoutKick(false);
+  match.elapsed=match.shootoutState.nextAt;t.advanceShootout();
+  assert.equal(match.penalty?.side,1,'the away team takes the next shot');
+  assert.match(t.screen.innerHTML,/data-action="shootout-dive"/,'goalkeeper has left/center/right controls');
+  t.pauseGame();clickAction('resume');
+  assert.match(t.screen.innerHTML,/data-action="shootout-dive"/,'keeper direction controls survive pause and resume');
+  assert.equal(t.chooseShootoutDive(-1),true,'left dive can be selected');
+  assert.equal(match.shootoutState.diveX,-6,'chosen left dive affects save coordinates');
+  assert.equal(t.chooseShootoutDive(1),false,'goalkeeper direction cannot be changed once chosen');
+  match.elapsed=match.penalty.readyAt;t.updateMatch(.02);
+  assert.equal(match.penalty?.phase,'flight','the opponent takes a real shot after goalkeeper choice');
+}
+{
+  t.setCupRound(0);t.showTeams('cup');t.startMatch();
+  const match=t.game(),before=storage.get('kkoma-cup-round');
+  t.beginShootout();
+  const wins=[true,false,true,false,true,false];
+  for(const made of wins){
+    assert.ok(match.penalty);
+    t.finishShootoutKick(made);
+    if(match.shootoutState){match.elapsed=match.shootoutState.nextAt;t.advanceShootout();}
+  }
+  assert.deepEqual([...match.shootout],[3,0],'early decisive 3:0 resolves after only six attempts');
+  assert.equal(match.ended,true,'no needless remaining kicks after early win');
+  assert.equal(storage.get('kkoma-cup-round'),String(Number(before)+1),'cup progress advances after the actual shootout win');
+}
+{
+  t.setCupRound(0);t.showTeams('cup');t.startMatch();const match=t.game();
+  t.beginShootout();
+  for(const made of [...Array(10).fill(true),true,false]){
+    assert.ok(match.penalty,'sudden death attempt exists');
+    t.finishShootoutKick(made);
+    if(match.shootoutState){match.elapsed=match.shootoutState.nextAt;t.advanceShootout();}
+  }
+  assert.deepEqual([...match.shootout],[6,5],'5:5 after five rounds extends to sudden death');
+  assert.equal(match.ended,true,'first unequal sudden-death pair finishes the shootout');
+  assert.equal(match.goalEvents.length,0,'shootout goals do not alter regular match goal events');
+  assert.deepEqual([...match.score],[0,0],'shootout goals do not affect regular time score');
 }
 console.log('PASS: mobile controls, tutorials, offside, penalties, 5% AI speed, keeper restarts, randomized music, sprites, and cup journey records');
