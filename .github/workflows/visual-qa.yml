@@ -32,7 +32,7 @@ permissions:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,6 +51,8 @@ jobs:
           python3 -m http.server 8000 >/tmp/kkoma-http.log 2>&1 &
       - name: Capture mobile gameplay and tutorial views
         run: node tests/visual-qa.mjs
+      - name: Capture difficulty and interactive shootout states
+        run: node tests/visual-qa.mjs --hard-hell-shootout-only
       - name: Capture representative national team art
         run: node tests/visual-qa.mjs --national-art-only
       - name: Capture championship ending views

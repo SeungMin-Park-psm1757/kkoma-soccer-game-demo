@@ -111,3 +111,20 @@ body { min-height:100dvh; overscroll-behavior:none; }
   .tutorial-emoji { width:70px; height:70px; font-size:42px; margin:4px auto 8px; }
   .tutorial-body { min-height:58px; font-size:16px; margin:7px auto 10px; }
 }
+
+/* Three levels share the existing team picker; the selected level persists locally. */
+.difficulty-group { margin:9px auto 6px; }
+.difficulty-title { font-size:13px; font-weight:900; color:#fff1b4; margin-bottom:6px; }
+.difficulty-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.difficulty-option { min-width:0; min-height:48px; padding:4px 2px; border:1px solid #d6ffcd8c; border-radius:13px; background:#073b32; color:white; font:800 15px var(--font-game); }
+.difficulty-option small { display:block; font-size:11px; color:#bdf3d8; }
+.difficulty-option.selected { outline:2px solid var(--lime); background:#236c4e; }
+.shootout-screen { background:linear-gradient(#063f35c9,#052721e3); }
+.shootout-panel { max-width:390px; padding:18px 14px; }
+.shootout-panel p { font-size:15px; }
+.shootout-directions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.shootout-directions .game-button { min-height:56px; padding:7px 3px; font-size:14px; }
+@media(max-height:740px) {
+ .team-grid { max-height:37dvh; }
+ .difficulty-group { margin:5px auto 4px; }
+}
