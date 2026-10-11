@@ -474,11 +474,21 @@
     return '●'.repeat(filled)+'○'.repeat(4-filled);
   }
 
+
+  // These scores are design targets (not measured win rates).
+  const AI_MODES={
+    normal:{label:'기본',score:10,pace:1,thinking:1,precision:1,pressure:1},
+    hard:{label:'하드',score:40,pace:1.08,thinking:.72,precision:.64,pressure:1.16},
+    hell:{label:'헬',score:60,pace:1.14,thinking:.52,precision:.42,pressure:1.31}
+  };
+  let aiMode=Object.hasOwn(AI_MODES,store.get('kkoma-ai-mode-v1','normal'))?store.get('kkoma-ai-mode-v1','normal'):'normal';
+  function aiTuning(){return AI_MODES[game?.aiMode||'normal']||AI_MODES.normal;}
+
   function showTeams(nextMode) {
     playMusic('menu');
     mode=nextMode; appScreen='teams';tutorialOverlay.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden'); screen.className='screen';
     const chosen=countries[selectedCountry];
-    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
+    screen.innerHTML=`<div class="panel"><h2 class="selection-title">우리 팀을 골라요</h2><p class="selection-note">좋아하는 나라를 선택해 주세요</p><div id="team-grid" class="team-grid">${countries.map(t=>`<button class="team-card${t.id===selectedCountry?' selected':''}" data-team="${t.id}" aria-pressed="${t.id===selectedCountry}"><span class="flag">${t.flag}</span>${t.name}</button>`).join('')}</div><div class="difficulty-group" role="group" aria-label="상대 AI 난이도"><div class="difficulty-title">상대 AI 난이도</div><div class="difficulty-options">${Object.entries(AI_MODES).map(([key,value])=>`<button class="difficulty-option${aiMode===key?' selected':''}" data-difficulty="${key}" aria-pressed="${aiMode===key}">${value.label}<small>${value.score}/100</small></button>`).join('')}</div></div><p class="badge team-skills">${chosen.flag} ${chosen.name}<span class="skill-row"><span>속도<br>${skillDots(chosen.rating.speed)}</span><span>패스<br>${skillDots(chosen.rating.pass)}</span><span>슛<br>${skillDots(chosen.rating.shot)}</span></span></p><div class="button-stack" style="margin:14px auto 0"><button class="game-button" data-action="play">${nextMode==='cup'?'🏆 '+roundNames[cupRound]+' 시작':'⚽ 연습 경기 시작'}</button><button class="game-button ghost" data-action="home">뒤로</button></div></div>`;
   }
 
   function chooseOpponent() {
@@ -492,7 +502,7 @@
     return formation.map(([fx,fy,speed,role],index)=>{
       const baseDepth=role==='GK'?5:fy;
       const y=defendingEnd===0?baseDepth:105-baseDepth;
-      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed*(side===1?1.05:1),role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0,manualUntil:0,tackleUntil:0,runUntil:0,kickUntil:0,shotUntil:0,saveUntil:0,actionStartedAt:0};
+      return {x:fx,y,homeX:fx,homeY:y,speed:(role==='GK'?3.6:speed)*team.rating.speed*(side===1?1.05*AI_MODES[aiMode].pace:1),role,side,index,team,color:team.color,targetX:fx,targetY:y,runX:0,runY:0,nextDecisionAt:0,manualUntil:0,tackleUntil:0,runUntil:0,kickUntil:0,shotUntil:0,saveUntil:0,actionStartedAt:0};
     });
   }
 
@@ -503,9 +513,9 @@
     const home=tutorial?countries.find(country=>country.name==='대한민국'):countries[selectedCountry],away=tutorial?countries.find(country=>country.name==='브라질'):chooseOpponent();
     uniformSpriteCache.clear();
     const currentMode=tutorial?'tutorial':mode;
-    game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,
+    game={home,away,kits:matchKits(home,away),mode:currentMode,round:cupRound,roundName:mode==='cup'?roundNames[cupRound]:'연습',difficulty:mode==='cup'?.55+cupRound*.12:.18,aiMode:tutorial?'normal':aiMode,
       players:[...makeTeam(home,0,-1),...makeTeam(away,1,-1)],ball:{x:0,y:52.5,vx:0,vy:0,owner:null,lastKicker:null,kickLockUntil:0},score:[0,0],elapsed:0,period:1,attackDir:-1,
-      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,penalty:null,offsidePass:null,goalEvents:[],
+      controlled:6,aim:null,ended:false,paused:false,lastTouch:0,nextTackleAt:0,manualTackleReadyAt:0,manualTackler:null,manualTackleUntil:0,restart:null,penalty:null,shootout:null,shootoutState:null,offsidePass:null,goalEvents:[],
       tutorial:tutorial?{stepId:tutorialStepId,flow:tutorialFlow,stepIndex:tutorialSession?.stepIndex||0,pendingMode:tutorialSession?.pendingMode||mode,phase:'playing',sceneToken:0,action:null,retryAt:null,stageStart:0,userTouched:false,activePlayers:[],player:null,target:null}:null};
     if(currentMode==='cup')ensureCupJourney();
     resetPositions(0);cameraY=52.5;lastTap=null;
@@ -519,18 +529,18 @@
     if(!game)return;
     $('#home-team-label').textContent=game.home.name; $('#away-team-label').textContent=game.away.name;
     $('#home-score').textContent=game.score[0]; $('#away-score').textContent=game.score[1];
-    $('#period-label').textContent=game.period===1?'전반':'후반';
+    $('#period-label').textContent=game.shootoutState?'승부차기':game.period===1?'전반':'후반';
     directionHint.textContent=game.attackDir<0?'↑ 공격　↓ 우리 골대':'↓ 공격　↑ 우리 골대';
     const elapsedInHalf=game.elapsed%75, remaining=Math.ceil(75-elapsedInHalf);
-    $('#clock').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+    $('#clock').textContent=game.shootoutState?game.shootoutState.goals.join(':'):`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
     const tackleReady=game.ball.owner?.side===1&&!game.restart&&!game.penalty;
     if(tackleButton.classList.contains('ready')!==tackleReady){
       tackleButton.classList[tackleReady?'add':'remove']('ready');
     }
     tackleButton.setAttribute('aria-label',tackleReady?'상대가 공을 가졌어요. 태클 가능':game.restart?'골키퍼가 공을 차면 다시 태클할 수 있어요':'상대가 공을 가졌을 때 태클');
-    if(game.penalty)tackleButton.classList.add('hidden');
-    else if(!game.tutorial)tackleButton.classList.remove('hidden');
-    const controlHint=game.penalty?(game.penalty.side===0?'⚽ 페널티킥! 골대 쪽으로 끌고 손을 떼요':'🥅 상대 페널티킥! 골키퍼를 응원해요'):game.restart?.kind==='offside'?(game.restart.side===0?'상대 오프사이드! 우리 팀 프리킥':'오프사이드! 상대편 프리킥'):game.restart?.side===0?'골키퍼가 1초 뒤 차요 · 친구 쪽으로 끌어요':game.restart?'골키퍼가 공을 차요':tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
+    if(game.penalty||game.shootoutState)tackleButton.classList.add('hidden');
+    else if(!game.tutorial&&!game.shootoutState)tackleButton.classList.remove('hidden');
+    const controlHint=game.shootoutState?`🥅 승부차기 ${game.shootoutState.goals[0]}:${game.shootoutState.goals[1]} · ${game.penalty?.side===1?'수비 방향을 선택해요':'드래그해 슛!'}`:game.penalty?(game.penalty.side===0?'⚽ 페널티킥! 골대 쪽으로 끌고 손을 떼요':'🥅 상대 페널티킥! 골키퍼를 응원해요'):game.restart?.kind==='offside'?(game.restart.side===0?'상대 오프사이드! 우리 팀 프리킥':'오프사이드! 상대편 프리킥'):game.restart?.side===0?'골키퍼가 1초 뒤 차요 · 친구 쪽으로 끌어요':game.restart?'골키퍼가 공을 차요':tackleReady?'공 가진 상대를 두 번 톡톡 · 태클 버튼도 가능':game.ball.owner?.side===0?'끌고 있으면 달리기 · 손 떼면 패스 · 골대 쪽은 슛':'공 쪽으로 끌고 가요';
     if(dragHint.textContent!==controlHint)dragHint.textContent=controlHint;
   }
 
@@ -547,15 +557,81 @@
     screen.innerHTML=`<div class="panel"><span class="badge">${tutorial?'조작 연습':game.mode==='cup'?roundNames[game.round]:'연습 경기'}</span><h2 class="selection-title">잠깐 쉬어가요</h2><p>${tutorial?'연습은 잠시 멈췄어요':`${game.home.name} ${game.score[0]} : ${game.score[1]} ${game.away.name}`}</p><div class="button-stack" style="margin:auto"><button class="game-button" data-action="resume">▶ 계속하기</button><button class="game-button secondary" data-action="mute">${muted?'🔇 소리 켜기':'🔊 소리 끄기'}</button>${tutorial?'<button class="game-button ghost" data-action="tutorial-again">이 단계 다시</button><button class="game-button ghost" data-action="tutorial-menu">연습 메뉴</button>':'<button class="game-button ghost" data-action="retry">다시 시작</button><button class="game-button ghost" data-action="home">처음으로</button>'}</div>${tutorial?'':'<p class="small">효과음은 나중에 바뀌어요.</p>'}</div>`;
   }
 
+
+  function shootoutIsOver(state){
+    const [a,b]=state.attempts,[x,y]=state.goals;
+    if(x>y+Math.max(0,5-b)||y>x+Math.max(0,5-a))return true;
+    return a>=5&&b>=5&&a===b&&x!==y;
+  }
+
+  function beginShootout(){
+    game.shootoutState={goals:[0,0],attempts:[0,0],nextSide:0,nextAt:game.elapsed,diveX:null};
+    game.shootout=null;game.restart=null;game.penalty=null;game.offsidePass=null;
+    clearPointer();lastTap=null;
+    playMusic('match');toast('🥅 동점! 직접 승부차기로 승부를 정해요!',2300);
+    advanceShootout();
+  }
+
+  function showShootoutControls(){
+    const shootout=game?.shootoutState,pen=game?.penalty;
+    if(!shootout||!pen)return;
+    if(pen.side===0){
+      screen.className='screen';screen.innerHTML='';
+      toast(`⚽ 우리 팀 ${shootout.attempts[0]+1}번째 킥! 드래그해 슛!`,1600);
+    }else{
+      screen.className='screen shootout-screen';
+      screen.innerHTML=`<div class="panel shootout-panel"><span class="badge">🥅 승부차기 · ${shootout.goals[0]} : ${shootout.goals[1]}</span><h2 class="selection-title">골키퍼 방향 선택!</h2><p>상대가 찰 방향을 예상해 막아봐!</p><div class="shootout-directions"><button class="game-button" data-action="shootout-dive" data-direction="-1">← 왼쪽</button><button class="game-button" data-action="shootout-dive" data-direction="0">● 가운데</button><button class="game-button" data-action="shootout-dive" data-direction="1">오른쪽 →</button></div><p class="small">방향을 고르면 상대가 슛해요</p></div>`;
+    }
+    updateHud();
+  }
+
+  function advanceShootout(){
+    const state=game?.shootoutState;
+    if(!state||game.penalty||game.elapsed<state.nextAt)return;
+    if(shootoutIsOver(state)){
+      game.shootout=[...state.goals];game.shootoutState=null;game.penalty=null;
+      finishMatch();return;
+    }
+    const side=state.nextSide;
+    state.diveX=null;
+    if(!beginPenaltyKick(side))return;
+    game.penalty.shootout=true;
+    showShootoutControls();
+  }
+
+  function finishShootoutKick(scored){
+    const state=game?.shootoutState,pen=game?.penalty;
+    if(!state||!pen)return false;
+    const side=pen.side;
+    state.attempts[side]++;
+    if(scored){state.goals[side]++;sfx('goal');}
+    game.penalty=null;game.ball.owner=null;game.ball.vx=game.ball.vy=0;
+    state.nextSide=1-side;state.nextAt=game.elapsed+1.1;
+    screen.className='screen';screen.innerHTML='';
+    clearPointer();lastTap=null;
+    toast(scored?(side===0?'⚽ 성공! 멋진 슛!':'상대 팀 골!'):(side===0?'아깝다! 다음 킥에 도전!':'🧤 막았어! 잘했어!'),1100);
+    updateHud();
+    if(shootoutIsOver(state)){
+      state.nextAt=game.elapsed+.6;
+    }
+    return true;
+  }
+
+  function chooseShootoutDive(direction){
+    const state=game?.shootoutState,pen=game?.penalty;
+    if(!state||!pen||pen.side!==1||pen.phase!=='setup'||state.diveX!==null)return false;
+    state.diveX=clamp(direction,-1,1)*6;
+    pen.readyAt=game.elapsed+.6;
+    screen.innerHTML='';screen.className='screen';
+    toast('🧤 골키퍼가 몸을 날려요!',850);return true;
+  }
+
   function finishMatch() {
     if(!game||game.tutorial||game.ended)return;
+    if(game.mode==='cup'&&game.score[0]===game.score[1]&&!game.shootout){if(!game.shootoutState)beginShootout();return;}
     playMusic('menu',true);
     clearPointer();lastTap=null;game.restart=null;game.penalty=null;game.offsidePass=null;game.ended=true; appScreen='result'; dragHint.classList.add('hidden');directionHint.classList.add('hidden');tackleButton.classList.add('hidden');
     const tied=game.score[0]===game.score[1];
-    if(game.mode==='cup'&&tied){
-      const homePens=Math.floor(random(2,6)),awayPens=Math.floor(random(2,6));
-      game.shootout=[homePens,homePens===awayPens?(awayPens===5?awayPens-1:awayPens+1):awayPens];
-    }
     const won=game.score[0]>game.score[1]||(game.shootout&&game.shootout[0]>game.shootout[1]);
     const champion=game.mode==='cup'&&won&&game.round===4;
     if(game.mode==='cup'&&won)recordCupWin();
@@ -657,15 +733,15 @@
   }
 
   function bestAiPass(p) {
-    const dir=Math.sign(attackGoal(p.side)-p.y);
+    const dir=Math.sign(attackGoal(p.side)-p.y),tuning=aiTuning();
     let best=null,bestScore=-Infinity;
     for(const mate of playersInPlay()){
-      if(mate.side!==p.side||mate===p||mate.role==='GK')continue;
+      if(mate.side!==p.side||mate===p||mate.role==='GK'||(p.side===1&&game.aiMode!=='normal'&&isOffsidePosition(mate,p.y)))continue;
       const dist=Math.hypot(mate.x-p.x,mate.y-p.y);
       if(dist<5||dist>38)continue;
       const progress=(mate.y-p.y)*dir;
       const risk=laneRisk(p,mate,1-p.side);
-      const score=progress*.16-dist*.025-risk*2.2-Math.abs(mate.x)*.008;
+      const score=progress*.16-dist*.025-risk*(p.side===1?2.2*tuning.precision:2.2)-Math.abs(mate.x)*.008;
       if(score>bestScore){bestScore=score;best=mate;}
     }
     return bestScore>-.8?best:null;
@@ -724,7 +800,11 @@
   function shootPenaltyKick(shooter,aimX) {
     const pen=game?.penalty;
     if(!pen||pen.phase!=='setup'||pen.shooter!==shooter)return false;
-    pen.phase='flight';pen.saveX=random(-7,7);pen.keeper.x=pen.saveX;pen.kickedAt=game.elapsed;
+    pen.phase='flight';
+    const tuning=aiTuning(),shotX=clamp(aimX,-PENALTY_AIM_LIMIT,PENALTY_AIM_LIMIT);
+    pen.saveX=pen.shootout&&pen.side===1?game.shootoutState.diveX:
+      pen.shootout&&pen.side===0&&game.aiMode!=='normal'&&Math.random()<(game.aiMode==='hell'?.39:.23)?clamp(shotX+random(-1.5,1.5),-7,7):random(-7,7);
+    pen.keeper.x=pen.saveX;pen.kickedAt=game.elapsed;
     const goal=attackGoal(pen.side);
     kick(shooter,clamp(aimX,-PENALTY_AIM_LIMIT,PENALTY_AIM_LIMIT)-shooter.x,goal-shooter.y,.78,true);
     return true;
@@ -736,7 +816,7 @@
     const ball=game.ball,goal=attackGoal(pen.side);
     if(pen.phase==='setup'){
       ball.owner=pen.shooter;ball.x=pen.shooter.x;ball.y=pen.shooter.y;
-      if(pen.side===1&&game.elapsed>=pen.readyAt)shootPenaltyKick(pen.shooter,random(-7,7));
+      if(pen.side===1&&game.elapsed>=pen.readyAt&&(!pen.shootout||game.shootoutState?.diveX!==null)){const range=pen.shootout?(game.aiMode==='hell'?7.1:game.aiMode==='hard'?8:9.5):7;shootPenaltyKick(pen.shooter,random(-range,range));}
       updateHud();return true;
     }
     const previousY=ball.y,previousX=ball.x;
@@ -747,17 +827,18 @@
       const progress=(keeperY-previousY)/(ball.y-previousY||1);
       const xAtKeeper=previousX+(ball.x-previousX)*clamp(progress,0,1);
       if(Math.abs(xAtKeeper-pen.saveX)<2.1){
-        pen.keeper.saveUntil=game.elapsed+.42;game.penalty=null;if(finishPenaltyPractice('골키퍼가 막았어!'))return true;beginGoalKick(1-pen.side);toast('🧤 골키퍼가 페널티킥을 막았어!',1700);return true;
+        pen.keeper.saveUntil=game.elapsed+.42;if(finishShootoutKick(false))return true;game.penalty=null;if(finishPenaltyPractice('골키퍼가 막았어!'))return true;beginGoalKick(1-pen.side);toast('🧤 골키퍼가 페널티킥을 막았어!',1700);return true;
       }
     }
     if(goal===0?ball.y<=0:ball.y>=105){
+      if(game.shootoutState){finishShootoutKick(Math.abs(ball.x)<9.2);return true;}
       game.penalty=null;
       if(Math.abs(ball.x)<9.2){if(finishPenaltyPractice('골! 잘했어!'))return true;scoreGoal(pen.side);}
       else{if(finishPenaltyPractice('골대 밖으로 나갔어!'))return true;beginGoalKick(1-pen.side);toast('페널티킥이 골대 밖으로 나갔어!',1600);}
       return true;
     }
     if(game.elapsed-pen.kickedAt>3){
-      game.penalty=null;if(finishPenaltyPractice('공이 멈췄어!'))return true;beginGoalKick(1-pen.side);return true;
+      if(finishShootoutKick(false))return true;game.penalty=null;if(finishPenaltyPractice('공이 멈췄어!'))return true;beginGoalKick(1-pen.side);return true;
     }
     updateHud();return true;
   }
@@ -851,6 +932,7 @@
     if(game.tutorial?.stepId==='tackle'&&game.elapsed-game.tutorial.stageStart>=6)tackleButton.classList.remove('hidden');
     cameraY+=(game.ball.y-cameraY)*(1-Math.exp(-2.2*dt));
     if(game.penalty){updatePenaltyKick(dt);return;}
+    if(game.shootoutState){advanceShootout();return;}
     if(!game.tutorial&&game.elapsed>=150){game.elapsed=150;updateHud();finishMatch();return;}
     if(!game.tutorial&&game.elapsed>=75&&game.period===1){game.period=2;game.attackDir=1;resetPositions(1);toast('후반 시작! 진영이 바뀌었어');}
     const ball=game.ball;
@@ -888,7 +970,7 @@
       if(p.role==='GK'){
         if(ball.owner===p){ball.x=p.x;ball.y=p.y;continue;}
         const gy=ownGoal(p.side), threatX=ball.x;
-        moveToward(p,clamp(threatX,-12,12),gy<20?5:100,dt,.78);
+        moveToward(p,clamp(threatX,-12,12),gy<20?5:100,dt,p.side===1?.78*aiTuning().pressure:.78);
         continue;
       }
       if(owner===p){
@@ -899,27 +981,27 @@
           const distGoal=Math.abs(goal-p.y);
           const shotLaneRisk=laneRisk(p,{x:clamp(-p.x*.18,-4,4),y:goal},0);
           if(game.elapsed>=(p.nextDecisionAt||0)){
-            if(distGoal<19&&Math.abs(p.x)<21&&shotLaneRisk<.58){
-              const aimX=clamp(-p.x*.16+random(-5.2,5.2),-8.5,8.5);
+            if(distGoal<19+(game.aiMode==='normal'?0:game.aiMode==='hard'?3:5)&&Math.abs(p.x)<21&&shotLaneRisk<.58+(.12*(1-aiTuning().precision))){
+              const aimX=clamp(-p.x*.16+random(-5.2,5.2)*aiTuning().precision,-8.5,8.5);
               kick(p,aimX-p.x,goal-p.y,.56+game.difficulty*.035,true);
-              p.nextDecisionAt=game.elapsed+1.05;
+              p.nextDecisionAt=game.elapsed+1.05*aiTuning().thinking;
               continue;
             }
-            if(pressure<4.3||shotLaneRisk>.74||Math.random()<.09){
+            if(pressure<4.3*aiTuning().pressure||shotLaneRisk>.74||Math.random()<.09+(1-aiTuning().thinking)*.18){
               const mate=bestAiPass(p);
               if(mate){
                 const leadY=mate.y+Math.sign(goal-mate.y)*2;
                 const dist=Math.hypot(mate.x-p.x,leadY-p.y);
                 kick(p,mate.x-p.x,leadY-p.y,clamp(.28+dist/42,.32,.9),false);
-                p.nextDecisionAt=game.elapsed+.58;
+                p.nextDecisionAt=game.elapsed+.58*aiTuning().thinking;
                 continue;
               }
             }
-            p.nextDecisionAt=game.elapsed+random(.52,.92);
+            p.nextDecisionAt=game.elapsed+random(.52,.92)*aiTuning().thinking;
           }
           let goalX=clamp(-p.x*.18,-4,4);
           if(pressure<7&&nearestHome)goalX=clamp(p.x+(p.x-nearestHome.x)*.7,-22,22);
-          moveToward(p,goalX,goal,dt,.47+game.difficulty*.03);
+          moveToward(p,goalX,goal,dt,(.47+game.difficulty*.03)*aiTuning().pressure);
           ball.x=p.x;ball.y=p.y;
           continue;
         }
@@ -933,10 +1015,10 @@
         else moveToward(p,p.homeX,p.homeY,dt,.58);
       }else if(owner.side!==p.side){
         const chasers=nearestPlayers(p.side,owner.x,owner.y,2);
-        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.72:1.12);
+        if(p===chasers[0])moveToward(p,owner.x,owner.y,dt,p.side===1?.72*aiTuning().pressure:1.12);
         else if(p===chasers[1]){
           const coverY=clamp(owner.y+Math.sign(attackGoal(owner.side)-owner.y)*7,4,101);
-          moveToward(p,owner.x,coverY,dt,p.side===1?.62:.86);
+          moveToward(p,owner.x,coverY,dt,p.side===1?.62*aiTuning().pressure:.86);
         }else moveToward(p,p.homeX+(owner.x-p.homeX)*.22,p.homeY+(owner.y-p.homeY)*.2,dt,p.side===1?.5:.58);
       }else{
         const forward=attackGoal(p.side),dir=Math.sign(forward-owner.y);
@@ -955,7 +1037,7 @@
       const carrier=ball.owner,defender=nearestFieldPlayer(1-carrier.side,carrier.x,carrier.y);
       if(defender&&game.elapsed>=(game.nextTackleAt||0)){
         const d=Math.hypot(defender.x-carrier.x,defender.y-carrier.y);
-        if(d<1.6&&Math.random()<dt*(carrier.side===0?.26:.7)){
+        if(d<1.6&&Math.random()<dt*(carrier.side===0?.26*aiTuning().pressure:.7)){
           if(inPenaltyArea(defender.side,carrier.x,carrier.y)&&Math.random()<.26){beginPenaltyKick(carrier.side);return;}
           setPossession(defender);game.nextTackleAt=game.elapsed+(carrier.side===0?1.45:.68);
           if(defender.side===0){game.controlled=defender.index;toast('공을 빼앗았어!',900);}
@@ -1395,6 +1477,10 @@
   screen.addEventListener('click',event=>{
     const teamButton=event.target.closest('[data-team]');
     if(teamButton){selectedCountry=Number(teamButton.dataset.team);showTeams(mode);return;}
+    const difficultyButton=event.target.closest('[data-difficulty]');
+    if(difficultyButton&&AI_MODES[difficultyButton.dataset.difficulty]){
+      aiMode=difficultyButton.dataset.difficulty;store.set('kkoma-ai-mode-v1',aiMode);showTeams(mode);return;
+    }
     const button=event.target.closest('[data-action]');if(!button)return;
     const action=button.dataset.action;
     if(action==='team'){if(!tutorialSeen)showTutorial('practice');else showTeams('practice');}
@@ -1402,6 +1488,7 @@
     else if(action==='tutorial-step')startTutorialExercise(button.dataset.step,'single');
     else if(action==='penalty-practice'||action==='penalty-again')beginPenaltyPractice();
     else if(action==='penalty-menu')showTutorial('practice');
+    else if(action==='shootout-dive')chooseShootoutDive(Number(button.dataset.direction));
     else if(action==='tutorial-all'){tutorialSession.flow='all';tutorialSession.stepIndex=0;startTutorialExercise(tutorialPages[0].id,'all');}
     else if(action==='tutorial-next'){tutorialSession.stepIndex++;startTutorialExercise(tutorialPages[tutorialSession.stepIndex].id,'all');}
     else if(action==='tutorial-again'){if(game?.tutorial)startTutorialExercise(game.tutorial.stepId,game.tutorial.flow);}
@@ -1416,7 +1503,7 @@
     else if(action==='ending-home')showHome();
     else if(action==='home')showHome();
     else if(action==='play')startMatch();
-    else if(action==='resume'){appScreen='match';game.paused=false;playMusic(game.tutorial?'menu':'match');screen.innerHTML='';if(game.tutorial){tutorialOverlay.classList.remove('hidden');refreshTutorialOverlay();}else{dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}}
+    else if(action==='resume'){appScreen='match';game.paused=false;playMusic(game.tutorial?'menu':'match');screen.innerHTML='';if(game.shootoutState&&game.penalty?.side===1&&game.shootoutState.diveX===null)showShootoutControls();if(game.tutorial){tutorialOverlay.classList.remove('hidden');refreshTutorialOverlay();}else{dragHint.classList.remove('hidden');directionHint.classList.remove('hidden');tackleButton.classList.remove('hidden');updateHud();}}
     else if(action==='mute'){muted=!muted;store.set('kkoma-muted',muted);pauseGame();}
     else if(action==='retry')startMatch();
     else if(action==='next'){showTeams('cup');}
