@@ -1087,6 +1087,7 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   assert.match(t.screen.innerHTML,/data-action="shootout-dive"/,'goalkeeper has left/center/right controls');
   t.pauseGame();clickAction('resume');
   assert.match(t.screen.innerHTML,/data-action="shootout-dive"/,'keeper direction controls survive pause and resume');
+  assert.match(t.screen.innerHTML,/data-action="shootout-pause"/,'keeper can pause from the overlay');
   assert.equal(t.chooseShootoutDive(-1),true,'left dive can be selected');
   assert.equal(match.shootoutState.diveX,-6,'chosen left dive affects save coordinates');
   assert.equal(t.chooseShootoutDive(1),false,'goalkeeper direction cannot be changed once chosen');
@@ -1105,14 +1106,16 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   }
   assert.deepEqual([...match.shootout],[3,0],'early decisive 3:0 resolves after only six attempts');
   assert.equal(match.ended,true,'no needless remaining kicks after early win');
-  assert.equal(storage.get('kkoma-cup-round'),String(Number(before)+1),'cup progress advances after the actual shootout win');
+  assert.equal(storage.get('kkoma-cup-round'),String(match.round+1),'cup progress advances after the actual shootout win');
 }
 {
   t.setCupRound(0);t.showTeams('cup');t.startMatch();const match=t.game();
   t.beginShootout();
-  for(const made of [...Array(10).fill(true),true,false]){
+  const sequence=[...Array(10).fill(true),true,false];
+  for(let turn=0;turn<sequence.length;turn++){
     assert.ok(match.penalty,'sudden death attempt exists');
-    t.finishShootoutKick(made);
+    t.finishShootoutKick(sequence[turn]);
+    if(turn===10)assert.ok(match.shootoutState,'the opponent must answer the first sudden-death kick');
     if(match.shootoutState){match.elapsed=match.shootoutState.nextAt;t.advanceShootout();}
   }
   assert.deepEqual([...match.shootout],[6,5],'5:5 after five rounds extends to sudden death');

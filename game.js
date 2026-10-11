@@ -560,7 +560,7 @@
 
   function shootoutIsOver(state){
     const [a,b]=state.attempts,[x,y]=state.goals;
-    if(x>y+Math.max(0,5-b)||y>x+Math.max(0,5-a))return true;
+    if(a<=5&&b<=5&&(x>y+Math.max(0,5-b)||y>x+Math.max(0,5-a)))return true;
     return a>=5&&b>=5&&a===b&&x!==y;
   }
 
@@ -580,7 +580,7 @@
       toast(`⚽ 우리 팀 ${shootout.attempts[0]+1}번째 킥! 드래그해 슛!`,1600);
     }else{
       screen.className='screen shootout-screen';
-      screen.innerHTML=`<div class="panel shootout-panel"><span class="badge">🥅 승부차기 · ${shootout.goals[0]} : ${shootout.goals[1]}</span><h2 class="selection-title">골키퍼 방향 선택!</h2><p>상대가 찰 방향을 예상해 막아봐!</p><div class="shootout-directions"><button class="game-button" data-action="shootout-dive" data-direction="-1">← 왼쪽</button><button class="game-button" data-action="shootout-dive" data-direction="0">● 가운데</button><button class="game-button" data-action="shootout-dive" data-direction="1">오른쪽 →</button></div><p class="small">방향을 고르면 상대가 슛해요</p></div>`;
+      screen.innerHTML=`<div class="panel shootout-panel"><span class="badge">🥅 승부차기 · ${shootout.goals[0]} : ${shootout.goals[1]}</span><h2 class="selection-title">골키퍼 방향 선택!</h2><p>상대가 찰 방향을 예상해 막아봐!</p><div class="shootout-directions"><button class="game-button" data-action="shootout-dive" data-direction="-1">← 왼쪽</button><button class="game-button" data-action="shootout-dive" data-direction="0">● 가운데</button><button class="game-button" data-action="shootout-dive" data-direction="1">오른쪽 →</button></div><p class="small">방향을 고르면 상대가 슛해요</p><button class="game-button ghost" data-action="shootout-pause">Ⅱ 잠시 쉬기</button></div>`;
     }
     updateHud();
   }
@@ -1489,6 +1489,7 @@
     else if(action==='penalty-practice'||action==='penalty-again')beginPenaltyPractice();
     else if(action==='penalty-menu')showTutorial('practice');
     else if(action==='shootout-dive')chooseShootoutDive(Number(button.dataset.direction));
+    else if(action==='shootout-pause')pauseGame();
     else if(action==='tutorial-all'){tutorialSession.flow='all';tutorialSession.stepIndex=0;startTutorialExercise(tutorialPages[0].id,'all');}
     else if(action==='tutorial-next'){tutorialSession.stepIndex++;startTutorialExercise(tutorialPages[tutorialSession.stepIndex].id,'all');}
     else if(action==='tutorial-again'){if(game?.tutorial)startTutorialExercise(game.tutorial.stepId,game.tutorial.flow);}
