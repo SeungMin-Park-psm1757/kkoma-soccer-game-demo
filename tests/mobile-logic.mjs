@@ -1066,7 +1066,7 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
     t.startMatch();const match=t.game(),opponent=match.players[17];
     assert.equal(match.aiMode,name,'game uses the selected AI level');
     assert.equal(t.AI_MODES[name].score,[10,40,60][modes.indexOf(name)],'AI level rubric is visible');
-    movement.push(opponent.speed);
+    movement.push(opponent.speed/(6.4*match.away.rating.speed));
     assert.ok(Math.abs(match.players[6].speed/(6.4*match.home.rating.speed)-1)<1e-10,'user player speed is preserved');
   }
   assert.ok(movement[0]<movement[1]&&movement[1]<movement[2],'Hard and Hell have modestly higher AI movement');
