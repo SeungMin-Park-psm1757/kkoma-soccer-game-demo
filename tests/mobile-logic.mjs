@@ -31,8 +31,12 @@ class AudioStub{
   play(){this.paused=false;return Promise.resolve();}
   pause(){this.paused=true;}
 }
-let forcedRandom=null;
-const vmMath=Object.create(Math);vmMath.random=()=>forcedRandom===null?Math.random():forcedRandom;
+let forcedRandom=null,simulationSeed=null;
+const vmMath=Object.create(Math);vmMath.random=()=>{
+  if(forcedRandom!==null)return forcedRandom;
+  if(simulationSeed!==null){simulationSeed=(Math.imul(simulationSeed,1664525)+1013904223)>>>0;return simulationSeed/4294967296;}
+  return Math.random();
+};
 const ctx=new Proxy({setTransform(){},drawImage(...args){drawImages.push(args);}},
   {get(target,key){return key in target?target[key]:()=>{};}});
 const canvas={...element(),getContext:()=>ctx,getBoundingClientRect:()=>({left:0,top:0,width:390,height:844}),
@@ -1071,6 +1075,8 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   }
   assert.ok(movement[0]<movement[1]&&movement[1]<movement[2],'Hard and Hell have modestly higher AI movement');
   assert.ok(t.AI_MODES.hard.thinking>t.AI_MODES.hell.thinking,'Hell makes decisions sooner');
+  assert.ok(t.AI_MODES.hard.pressure>t.AI_MODES.normal.pressure&&t.AI_MODES.hell.pressure>t.AI_MODES.hard.pressure,'pressure increases by mode');
+  assert.ok(t.AI_MODES.hard.precision<t.AI_MODES.normal.precision&&t.AI_MODES.hell.precision<t.AI_MODES.hard.precision,'Hell has the narrowest shooting spread');
   listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:'hell'}}:null}});
   t.startTutorialExercise('pass','single');
   const tutorial=t.game(),tutorialAway=tutorial.players[17];
@@ -1100,6 +1106,21 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   assert.equal(match.penalty?.phase,'flight','the opponent takes a real shot after goalkeeper choice');
 }
 {
+  forcedRandom=.5;t.setCupRound(0);t.showTeams('cup');t.startMatch();const match=t.game();t.beginShootout();
+  const runUntilAttempt=(side,count)=>{for(let frame=0;frame<80&&match.shootoutState?.attempts[side]===count;frame++)t.updateMatch(.05);assert.equal(match.shootoutState?.attempts[side],count+1,`side ${side} kick resolves through the real penalty trajectory`);};
+  assert.equal(t.shootPenaltyKick(match.penalty.shooter,6),true,'home shootout accepts a real aimed shot');runUntilAttempt(0,0);
+  assert.equal(match.shootoutState.goals[0],1,'home shot past the goalkeeper scores in the shootout');
+  match.elapsed=match.shootoutState.nextAt;t.advanceShootout();assert.equal(t.chooseShootoutDive(0),true,'center dive can be selected');
+  match.elapsed=match.penalty.readyAt;t.updateMatch(.02);runUntilAttempt(1,0);
+  assert.equal(match.shootoutState.goals[1],0,'center dive saves the centered AI shot');
+  match.elapsed=match.shootoutState.nextAt;t.advanceShootout();t.shootPenaltyKick(match.penalty.shooter,13);runUntilAttempt(0,1);
+  assert.equal(match.shootoutState.goals[0],1,'wide home shot is recorded as a miss');
+  match.elapsed=match.shootoutState.nextAt;t.advanceShootout();assert.equal(t.chooseShootoutDive(-1),true,'left dive can be selected');
+  match.elapsed=match.penalty.readyAt;t.updateMatch(.02);runUntilAttempt(1,1);
+  assert.equal(match.shootoutState.goals[1],1,'AI scores when its centered shot escapes the chosen left dive');
+  forcedRandom=null;
+}
+{
   t.setCupRound(0);t.showTeams('cup');t.startMatch();
   const match=t.game(),before=storage.get('kkoma-cup-round');
   t.beginShootout();
@@ -1127,5 +1148,52 @@ for(const [direction,ballY,defenderY] of [[-1,65,22],[1,40,82]]){
   assert.equal(match.ended,true,'first unequal sudden-death pair finishes the shootout');
   assert.equal(match.goalEvents.length,0,'shootout goals do not alter regular match goal events');
   assert.deepEqual([...match.score],[0,0],'shootout goals do not affect regular time score');
+}
+{
+  const simulate=(level,seed)=>{
+    simulationSeed=seed;
+    listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:level}}:null}});
+    t.showTeams('practice');t.startMatch();
+    const match=t.game(),lastActions=new Map();let possessionFrames=0,passes=0,shots=0,frameCount=0;
+    for(let frame=0;frame<3002&&!match.ended;frame++){
+      t.updateMatch(.05);
+      frameCount++;
+      if(match.ball.owner?.side===1)possessionFrames++;
+      for(const player of match.players){
+        if(player.side!==1||!player.actionStartedAt||lastActions.get(player)!==undefined&&lastActions.get(player)===player.actionStartedAt)continue;
+        lastActions.set(player,player.actionStartedAt);
+        if(player.shotUntil>player.actionStartedAt)shots++;else passes++;
+      }
+    }
+    assert.ok(match.ended&&Math.abs(match.elapsed-150)<1e-8,`${level} simulation reaches full-time at 150 seconds (ended=${match.ended}, elapsed=${match.elapsed})`);
+    return {possession:Math.round(possessionFrames*100/frameCount),passes,shots,goals:match.score[1]};
+  };
+  const summaries={};
+  for(const level of ['normal','hard','hell']){
+    const games=[1,2,3].map(seed=>simulate(level,seed));
+    summaries[level]=Object.fromEntries(['possession','passes','shots','goals'].map(key=>[key,Math.round(games.reduce((sum,result)=>sum+result[key],0)/games.length)]));
+  }
+  simulationSeed=null;
+  console.log(`AI simulation averages (3 seeds; targets are not scores): ${JSON.stringify(summaries)}`);
+  t.showTeams('practice');
+}
+{
+  const meanShotError={};
+  for(const level of ['normal','hard','hell']){
+    let total=0;
+    for(let seed=1;seed<=30;seed++){
+      simulationSeed=seed;listeners.screen.click({target:{closest:selector=>selector==='[data-difficulty]'?{dataset:{difficulty:level}}:null}});t.showTeams('practice');t.startMatch();
+      const match=t.game(),shooter=match.players.find(player=>player.side===1&&player.role==='FW');
+      shooter.x=0;shooter.y=96;shooter.nextDecisionAt=0;match.ball.owner=shooter;match.ball.x=0;match.ball.y=96;
+      for(const defender of match.players.filter(player=>player.side===0)){defender.x=29;defender.y=50;}
+      const prior=shooter.actionStartedAt;t.updateMatch(.05);
+      assert.ok(shooter.shotUntil>prior,'the fixed close-range lane produces an AI shot');
+      total+=Math.abs(match.ball.x+(105-match.ball.y)*match.ball.vx/match.ball.vy);
+    }
+    meanShotError[level]=Number((total/30).toFixed(2));
+  }
+  simulationSeed=null;
+  assert.ok(meanShotError.normal>meanShotError.hard&&meanShotError.hard>meanShotError.hell,'Hell AI aims closer to center than Hard in repeated fixed shots');
+  console.log(`AI fixed-shot mean horizontal aim error (lower is more accurate; 30 seeds): ${JSON.stringify(meanShotError)}`);
 }
 console.log('PASS: mobile controls, tutorials, offside, penalties, 5% AI speed, keeper restarts, randomized music, sprites, and cup journey records');

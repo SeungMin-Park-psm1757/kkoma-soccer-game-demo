@@ -1,4 +1,5 @@
 import { chromium } from 'playwright-core';
+import { readFileSync } from 'node:fs';
 
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const viewports=[[360,800],[390,844],[412,915]];
@@ -60,8 +61,97 @@ async function assertTouchLayout(page,width,height,label){
   for(const button of result.buttons){
     if(button.width<=0||button.height<=0)throw new Error(`${label} has a zero-size button: ${button.label}`);
     if(!button.scrollable&&(button.x<0||button.y<0||button.x+button.width>width||button.y+button.height>height))throw new Error(`${label} button clipped at ${width}x${height}: ${button.label}`);
-    if(/game-button|tutorial-tile|team-card|tackle-button|icon-button|tutorial-control/.test(button.className)&&Math.min(button.width,button.height)<44)throw new Error(`${label} important touch target is under 44px: ${button.label}`);
+    if(/game-button|difficulty-option|tutorial-tile|team-card|tackle-button|icon-button|tutorial-control/.test(button.className)&&Math.min(button.width,button.height)<44)throw new Error(`${label} important touch target is under 44px: ${button.label}`);
   }
+  for(let i=0;i<result.buttons.length;i++)for(let j=i+1;j<result.buttons.length;j++){
+    const a=result.buttons[i],b=result.buttons[j];if(a.scrollable||b.scrollable)continue;
+    const overlapX=Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x),overlapY=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
+    if(overlapX>2&&overlapY>2)throw new Error(`${label} buttons overlap at ${width}x${height}: ${JSON.stringify([a,b])}`);
+  }
+}
+
+if(process.argv.includes('--hard-hell-shootout-only')){
+  const source=readFileSync(new URL('../game.js',import.meta.url),'utf8');
+  const instrumented=source.replace(/\}\)\(\);\s*$/,'window.__releaseQA={game:()=>game,showTeams,startMatch,beginShootout,advanceShootout,finishShootoutKick,chooseShootoutDive,finishMatch,scoreGoal,showEnding,updateMatch,setCupRound:value=>{cupRound=value},project};})();');
+  if(instrumented===source)throw new Error('could not install private visual QA hooks');
+  const openPage=async(width,height)=>{
+    const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+    monitorPage(page);
+    await page.route('**/game.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:instrumented}));
+    await page.addInitScript(()=>localStorage.setItem('kkoma-tutorial-done','true'));
+    await page.goto(origin,{waitUntil:'networkidle'});
+    return page;
+  };
+  const screenshot=async(page,name,width,height,label)=>{
+    await assertTouchLayout(page,width,height,label);
+    await page.screenshot({path:`visual-qa/${name}-${width}x${height}.png`,fullPage:true});
+    assertNoBrowserErrors(page,label);
+  };
+  for(const [width,height] of viewports){
+    for(const level of ['hard','hell']){
+      const page=await openPage(width,height);
+      await page.click('[data-action="team"]');
+      if(await page.locator('.difficulty-option').count()!==3)throw new Error(`${level} difficulty choices missing at ${width}x${height}`);
+      if(level==='hard')await screenshot(page,'difficulty-select',width,height,'difficulty selection');
+      await page.click(`[data-difficulty="${level}"]`);
+      await page.reload({waitUntil:'networkidle'});
+      await page.click('[data-action="team"]');
+      if(!await page.locator(`[data-difficulty="${level}"].selected`).count())throw new Error(`${level} preference was not restored after reload`);
+      await page.click(`[data-difficulty="${level}"]`);
+      await page.click('[data-action="play"]');
+      const activeLevel=await page.evaluate(()=>window.__releaseQA.game()?.aiMode);
+      if(activeLevel!==level)throw new Error(`${level} was not applied to the practice match at ${width}x${height}`);
+      await page.waitForTimeout(250);
+      await screenshot(page,`${level}-match`,width,height,`${level} match`);
+      await page.close();
+    }
+
+    const page=await openPage(width,height);
+    await page.click('[data-action="cup"]');
+    await page.click('[data-difficulty="hard"]');
+    await page.click('[data-action="play"]');
+    if(await page.evaluate(()=>window.__releaseQA.game()?.aiMode)!=='hard')throw new Error(`cup did not apply hard mode at ${width}x${height}`);
+    await page.evaluate(()=>{const api=window.__releaseQA,match=api.game();match.elapsed=150;api.finishMatch();});
+    if(!await page.locator('#drag-hint').textContent().then(text=>text.includes('드래그해 슛!')))throw new Error(`our shootout attack hint missing at ${width}x${height}`);
+    await screenshot(page,'shootout-attack',width,height,'shootout home attack');
+    const start=await page.evaluate(()=>{
+      const api=window.__releaseQA,match=api.game(),pen=match.penalty,canvas=document.querySelector('#pitch'),rect=canvas.getBoundingClientRect(),point=api.project(pen.shooter.x,pen.shooter.y);
+      match.elapsed=pen.readyAt;
+      return {x:rect.left+point.x,y:rect.top+point.y};
+    });
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(start.x+24,start.y-90,{steps:4});await page.mouse.up();
+    if(await page.evaluate(()=>window.__releaseQA.game().penalty?.phase)!=='flight')throw new Error(`drag-release did not shoot the home penalty at ${width}x${height}`);
+    await page.evaluate(()=>{const api=window.__releaseQA,match=api.game();api.finishShootoutKick(true);match.elapsed=match.shootoutState.nextAt;api.advanceShootout();});
+    const directions=page.locator('.shootout-directions .game-button');
+    if(await directions.count()!==3)throw new Error(`goalkeeper direction choices missing at ${width}x${height}`);
+    const rects=await directions.evaluateAll(buttons=>buttons.map(button=>{const r=button.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};}));
+    if(rects.some(rect=>rect.width<44||rect.height<44))throw new Error(`goalkeeper direction target below 44px at ${width}x${height}`);
+    await screenshot(page,'shootout-goalkeeper',width,height,'shootout goalkeeper choices');
+    await page.click('[data-action="shootout-dive"][data-direction="1"]');
+    await page.evaluate(()=>{const api=window.__releaseQA,match=api.game();match.elapsed=match.penalty.readyAt;api.updateMatch(.02);});
+    if(await page.evaluate(()=>window.__releaseQA.game().penalty?.phase)!=='flight')throw new Error(`goalkeeper choice did not trigger the opponent shot at ${width}x${height}`);
+    await screenshot(page,'shootout-dive-selected',width,height,'goalkeeper dive selected');
+    await page.evaluate(()=>{
+      const api=window.__releaseQA,match=api.game();api.finishShootoutKick(false);
+      while(match.shootoutState){match.elapsed=match.shootoutState.nextAt;api.advanceShootout();if(match.penalty)api.finishShootoutKick(match.penalty.side===0);}
+    });
+    if(!await page.locator('.result-score').count()||!await page.locator('text=승부차기').count())throw new Error(`shootout result screen missing at ${width}x${height}`);
+    await screenshot(page,'shootout-result',width,height,'shootout result');
+    const savedBeforeReload=await page.evaluate(()=>[localStorage.getItem('kkoma-cup-round'),localStorage.getItem('kkoma-cup-journey-v1')]);
+    await page.reload({waitUntil:'networkidle'});
+    const savedAfterReload=await page.evaluate(()=>[localStorage.getItem('kkoma-cup-round'),localStorage.getItem('kkoma-cup-journey-v1')]);
+    if(JSON.stringify(savedAfterReload)!==JSON.stringify(savedBeforeReload))throw new Error(`shootout cup result changed after reload at ${width}x${height}`);
+    await page.evaluate(()=>{
+      const wins=Array.from({length:5},(_,round)=>({round,homeId:6,awayId:round,score:[1,0],shootout:null,goalEvents:[{elapsed:12,side:0,score:[1,0]}]}));
+      window.__releaseQA.showEnding({countryId:6,wins,factId:null});
+    });
+    await page.waitForSelector('.ending-card');
+    await screenshot(page,'world-cup-champion',width,height,'world cup champion ending');
+    await page.close();
+  }
+  await browser.close();
+  console.log('PASS: difficulty, interactive shootout, keeper controls, result, and champion ending at all three mobile sizes');
+  process.exit(0);
 }
 
 if(process.argv.includes('--ending-only')){
